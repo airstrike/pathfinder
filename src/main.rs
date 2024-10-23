@@ -304,15 +304,17 @@ impl canvas::Program<Message> for App {
             let scaled_height = board_height * scaling;
 
             // Calculate translation to center the scaled board within the frame
+            // We need to flip the y-coordinate translation to match our mathematical coordinate system
             let translation = iced::Vector::new(
                 (bounds.width - scaled_width) / 2.0 - (min_x as f32 * scaling),
-                (bounds.height - scaled_height) / 2.0 - (min_y as f32 * scaling),
+                bounds.height - (bounds.height - scaled_height) / 2.0 + (min_y as f32 * scaling),
             );
 
+            // Apply the transformations in the correct order:
             frame.translate(translation);
             frame.scale(scaling);
-            board.draw(frame);
 
+            board.draw(frame);
             self.search.draw(frame, self.show_solution);
         });
 

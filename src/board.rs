@@ -48,15 +48,15 @@ impl Board {
 
         // Draw the white background
         let background = Path::rectangle(
-            (min_x as f32, min_y as f32).into(),
-            (max_x as f32 - min_x as f32, max_y as f32 - min_y as f32).into(),
+            (min_x as f32, -max_y as f32).into(), // Flip y-coordinate
+            (max_x as f32 - min_x as f32, (max_y - min_y) as f32).into(),
         );
         frame.fill(&background, Fill::from(Color::WHITE));
 
         // Draw the boundary square around the board
         let boundary = Path::rectangle(
-            (min_x as f32, min_y as f32).into(),
-            (max_x as f32 - min_x as f32, max_y as f32 - min_y as f32).into(),
+            (min_x as f32, -max_y as f32).into(), // Flip y-coordinate
+            (max_x as f32 - min_x as f32, (max_y - min_y) as f32).into(),
         );
         frame.stroke(
             &boundary,
@@ -67,18 +67,18 @@ impl Board {
         let tick_stroke = Stroke::default().with_color(Color::BLACK).with_width(1.0);
         for x in (min_x..=max_x).step_by(50) {
             let min_tick = Path::line(
-                (x as f32, min_y as f32).into(),
-                (x as f32, min_y as f32 + 2.5).into(),
+                (x as f32, -min_y as f32).into(),         // Flip y-coordinate
+                (x as f32, -(min_y as f32 + 2.5)).into(), // Flip y-coordinate
             );
             let max_tick = Path::line(
-                (x as f32, max_y as f32).into(),
-                (x as f32, max_y as f32 - 2.5).into(),
+                (x as f32, -max_y as f32).into(),         // Flip y-coordinate
+                (x as f32, -(max_y as f32 - 2.5)).into(), // Flip y-coordinate
             );
             frame.stroke(&min_tick, tick_stroke.clone());
             frame.stroke(&max_tick, tick_stroke.clone());
             frame.fill_text(Text {
                 content: x.to_string(),
-                position: (x as f32, max_y as f32 + 2.5).into(),
+                position: (x as f32, -(min_y as f32 - 2.5)).into(), // Flip y-coordinate
                 color: Color::BLACK,
                 size: 4.0.into(),
                 horizontal_alignment: iced::alignment::Horizontal::Center,
@@ -88,18 +88,18 @@ impl Board {
 
         for y in (min_y..=max_y).step_by(50) {
             let min_tick = Path::line(
-                (min_x as f32, y as f32).into(),
-                (min_x as f32 + 2.5, y as f32).into(),
+                (min_x as f32, -y as f32).into(),       // Flip y-coordinate
+                (min_x as f32 + 2.5, -y as f32).into(), // Flip y-coordinate
             );
             let max_tick = Path::line(
-                (max_x as f32, y as f32).into(),
-                (max_x as f32 - 2.5, y as f32).into(),
+                (max_x as f32, -y as f32).into(),       // Flip y-coordinate
+                (max_x as f32 - 2.5, -y as f32).into(), // Flip y-coordinate
             );
             frame.stroke(&min_tick, tick_stroke.clone());
             frame.stroke(&max_tick, tick_stroke.clone());
             frame.fill_text(Text {
                 content: y.to_string(),
-                position: (min_x as f32 - 2.5, y as f32 - 2.5).into(),
+                position: (min_x as f32 - 2.5, -y as f32 - 2.5).into(), // Flip y-coordinate
                 color: Color::BLACK,
                 size: 4.0.into(),
                 horizontal_alignment: iced::alignment::Horizontal::Right,

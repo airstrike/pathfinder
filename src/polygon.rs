@@ -195,16 +195,15 @@ impl Polygon {
 
     /// Draws the polygon on the canvas
     pub fn draw(&self, index: usize, frame: &mut Frame) {
-        // Get the current fill color and calculate the stroke color
         let fill_color = COLORS[index % COLORS.len()];
-        let stroke_color = darken(fill_color, 0.5); // Darken the fill color by 50%
+        let stroke_color = darken(fill_color, 0.5);
 
         let path = Path::new(|p| {
             for (i, vertex) in self.vertices.iter().enumerate() {
                 if i == 0 {
-                    p.move_to((vertex.x as f32, vertex.y as f32).into());
+                    p.move_to((vertex.x as f32, -vertex.y as f32).into());
                 } else {
-                    p.line_to((vertex.x as f32, vertex.y as f32).into());
+                    p.line_to((vertex.x as f32, -vertex.y as f32).into());
                 }
             }
             p.close();
@@ -212,13 +211,15 @@ impl Polygon {
 
         frame.fill(&path, Fill::from(fill_color));
         frame.stroke(&path, Stroke::default().with_color(stroke_color));
+
+        let center = self.center();
         frame.fill_text(Text {
             content: format!("{}", index + 1),
-            position: (self.center().x as f32, self.center().y as f32).into(),
+            position: (center.x as f32, -center.y as f32).into(),
             color: Color::BLACK,
             size: 5.0.into(),
             ..Text::default()
-        })
+        });
     }
 }
 

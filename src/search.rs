@@ -266,13 +266,13 @@ impl Search {
 
         for (from, to) in &self.state.considered_edges {
             let path = Path::line(
-                (from.x as f32, from.y as f32).into(),
-                (to.x as f32, to.y as f32).into(),
+                (from.x as f32, -from.y as f32).into(), // Flip y-coordinate
+                (to.x as f32, -to.y as f32).into(),     // Flip y-coordinate
             );
             frame.stroke(&path, historical_stroke.clone());
         }
 
-        // Draw current active paths (not yet in considered_edges) as blue lines
+        // Draw current active paths
         let current_stroke = Stroke::default()
             .with_color(Color::from_rgba8(0, 100, 255, 0.5))
             .with_width(2.0);
@@ -283,22 +283,19 @@ impl Search {
 
         for (target, path) in &self.state.current_paths {
             if path.len() > 1 {
-                // Calculate distance from path end to goal
                 let distance_to_goal = Self::distance(target, &self.goal);
 
-                // Update best path if this one gets closer to the goal
                 if distance_to_goal < best_distance_to_goal {
                     best_distance_to_goal = distance_to_goal;
                     best_current_path = Some(path.clone());
                 }
 
-                // Draw all current paths in blue
                 for window in path.windows(2) {
                     let from = window[0];
                     let to = window[1];
                     let path = Path::line(
-                        (from.x as f32, from.y as f32).into(),
-                        (to.x as f32, to.y as f32).into(),
+                        (from.x as f32, -from.y as f32).into(), // Flip y-coordinate
+                        (to.x as f32, -to.y as f32).into(),     // Flip y-coordinate
                     );
                     frame.stroke(&path, current_stroke.clone());
                 }
@@ -315,13 +312,12 @@ impl Search {
                 let from = window[0];
                 let to = window[1];
                 let path = Path::line(
-                    (from.x as f32, from.y as f32).into(),
-                    (to.x as f32, to.y as f32).into(),
+                    (from.x as f32, -from.y as f32).into(), // Flip y-coordinate
+                    (to.x as f32, -to.y as f32).into(),     // Flip y-coordinate
                 );
                 frame.stroke(&path, best_stroke.clone());
             }
 
-            // Show current best path score
             if let Some(last) = path.last() {
                 let current_path_score: i32 = path
                     .windows(2)
@@ -333,7 +329,7 @@ impl Search {
                         "Current best: {}\nTo goal: {}",
                         current_path_score, best_distance_to_goal
                     ),
-                    position: (last.x as f32 + 5.0, last.y as f32 + 5.0).into(),
+                    position: (last.x as f32 + 5.0, -last.y as f32 + 5.0).into(), // Flip y-coordinate
                     color: Color::BLACK,
                     size: 4.0.into(),
                     ..Text::default()
@@ -358,17 +354,16 @@ impl Search {
                     let from = window[0];
                     let to = window[1];
                     let path = Path::line(
-                        (from.x as f32, from.y as f32).into(),
-                        (to.x as f32, to.y as f32).into(),
+                        (from.x as f32, -from.y as f32).into(), // Flip y-coordinate
+                        (to.x as f32, -to.y as f32).into(),     // Flip y-coordinate
                     );
                     frame.stroke(&path, solution_stroke.clone());
                 }
 
-                // Show optimal path score
                 if let Some(last) = path.last() {
                     frame.fill_text(Text {
                         content: format!("Optimal: {}", score),
-                        position: (last.x as f32 + 5.0, last.y as f32 - 5.0).into(),
+                        position: (last.x as f32 + 5.0, -last.y as f32 - 5.0).into(), // Flip y-coordinate
                         color: Color::BLACK,
                         size: 4.0.into(),
                         ..Text::default()
@@ -379,25 +374,25 @@ impl Search {
 
         // Draw vertices
         for vertex in &self.state.open {
-            let circle = Path::circle((vertex.x as f32, vertex.y as f32).into(), 1.0);
+            let circle = Path::circle((vertex.x as f32, -vertex.y as f32).into(), 1.0); // Flip y-coordinate
             frame.fill(&circle, Fill::from(Color::from_rgb8(0, 100, 255)));
         }
 
         for vertex in &self.state.closed {
-            let circle = Path::circle((vertex.x as f32, vertex.y as f32).into(), 1.0);
+            let circle = Path::circle((vertex.x as f32, -vertex.y as f32).into(), 1.0); // Flip y-coordinate
             frame.fill(&circle, Fill::from(Color::from_rgb8(255, 100, 100)));
         }
 
         if let Some(next) = self.state.next_vertex {
-            let circle = Path::circle((next.x as f32, next.y as f32).into(), 1.5);
+            let circle = Path::circle((next.x as f32, -next.y as f32).into(), 1.5); // Flip y-coordinate
             frame.fill(&circle, Fill::from(Color::from_rgb8(50, 205, 50)));
         }
 
         // Draw start and goal
-        let start_circle = Path::circle((self.start.x as f32, self.start.y as f32).into(), 2.0);
+        let start_circle = Path::circle((self.start.x as f32, -self.start.y as f32).into(), 2.0); // Flip y-coordinate
         frame.fill(&start_circle, Fill::from(Color::from_rgb8(0, 0, 255)));
 
-        let goal_circle = Path::circle((self.goal.x as f32, self.goal.y as f32).into(), 2.0);
+        let goal_circle = Path::circle((self.goal.x as f32, -self.goal.y as f32).into(), 2.0); // Flip y-coordinate
         frame.fill(&goal_circle, Fill::from(Color::from_rgb8(255, 0, 0)));
     }
 
