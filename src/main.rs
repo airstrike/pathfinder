@@ -90,7 +90,7 @@ impl App {
 
     fn slide(&self) -> Element<'_, Message> {
         slider(
-            0.0..=self.search.total_steps() as f32 - 1.0,
+            0.0..=self.search.total_steps() as f32,
             self.search.current_step() as f32,
             Message::JumpTo,
         )
