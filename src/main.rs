@@ -46,9 +46,9 @@ struct App {
 impl Default for App {
     fn default() -> Self {
         let board = Board::default();
-        let start = Point::new(board.bounds().0, board.bounds().1);
+        let start = Point::new(115, 655);
         let heuristic = Heuristic::default();
-        let goal = Point::new(board.bounds().2, board.bounds().3);
+        let goal = Point::new(380, 560);
         let search = Search::new(board.clone(), start, goal, heuristic);
 
         Self {
@@ -167,6 +167,7 @@ impl App {
             Message::Back => {
                 self.is_playing = false;
                 self.search.step_back();
+                self.cache.clear();
                 Task::none()
             }
             Message::Next => {
