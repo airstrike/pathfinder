@@ -8,5 +8,5 @@ num-traits = "0.2.19"
 palette = "0.7.6"
 
 [dependencies.iced]
-features = ["advanced", "canvas", "lazy"]
+features = ["advanced", "canvas", "lazy", "tokio"]
 version = "0.13"

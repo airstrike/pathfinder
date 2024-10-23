@@ -2,7 +2,7 @@ use iced::widget::canvas::{Fill, Frame, Path, Stroke, Text};
 use iced::Color;
 use std::collections::HashSet;
 
-use crate::{Point, Polygon};
+use crate::{Edge, Point, Polygon};
 
 /// Represents the game board containing polygonal obstacles
 #[derive(Clone, Debug)]
@@ -23,8 +23,13 @@ impl Board {
         Self { polygons }
     }
 
+    /// Returns an iterator over the polygons on the board
+    pub fn polygons(&self) -> impl Iterator<Item = &Polygon> {
+        self.polygons.iter()
+    }
+
     /// Returns all vertices from all polygons
-    pub fn all_vertices(&self) -> HashSet<Point<i32>> {
+    pub fn vertices(&self) -> HashSet<Point<i32>> {
         let mut vertices = HashSet::new();
         for polygon in &self.polygons {
             vertices.extend(polygon.vertices_vec());
@@ -32,9 +37,9 @@ impl Board {
         vertices
     }
 
-    /// Returns a reference to the polygons
-    pub fn polygons(&self) -> impl Iterator<Item = &Polygon> {
-        self.polygons.iter()
+    /// Returns all outer edges from all polygons
+    pub fn outer_edges(&self) -> Vec<Edge> {
+        self.polygons().flat_map(|p| p.outer_edges()).collect()
     }
 
     pub fn draw(&self, frame: &mut Frame) {

@@ -41,34 +41,69 @@ impl Search {
         Self { board, start, goal }
     }
 
-    /// Builds a visibility graph representing which vertices can see each other
+    /// Builds a visibility graph based on inter-visible vertices
     pub fn build_visibility_graph(&self) -> HashMap<Point, HashSet<Point>> {
         let mut graph: HashMap<Point, HashSet<Point>> = HashMap::new();
-        let mut vertices = self.board.all_vertices();
+        let mut vertices = self.board.vertices();
+
+        // Add start and goal to vertices
         vertices.insert(self.start);
         vertices.insert(self.goal);
+        let vertices: Vec<_> = vertices.into_iter().collect();
 
-        for &from_vertex in &vertices {
-            let mut visible = HashSet::new();
-
-            'outer: for &to_vertex in &vertices {
-                if from_vertex == to_vertex {
+        for (i, &v1) in vertices.iter().enumerate() {
+            for (j, &v2) in vertices.iter().enumerate() {
+                if i == j {
                     continue;
                 }
 
-                for polygon in self.board.polygons() {
-                    if polygon.intersects_segment(&from_vertex, &to_vertex) {
-                        continue 'outer;
-                    }
+                // Check if vertices are visible to each other
+                if self.are_vertices_visible(v1, v2) {
+                    graph.entry(v1).or_default().insert(v2);
+                    graph.entry(v2).or_default().insert(v1);
                 }
-
-                visible.insert(to_vertex);
             }
-
-            graph.insert(from_vertex, visible);
         }
 
         graph
+    }
+
+    /// Determines if two vertices can see each other
+    fn are_vertices_visible(&self, v1: Point, v2: Point) -> bool {
+        // If points are the same, they're not visible to each other
+        if v1 == v2 {
+            return false;
+        }
+
+        // For each polygon
+        for polygon in self.board.polygons() {
+            // Skip intersection check if both points are vertices of this polygon
+            let v1_in_polygon = polygon.vertices_vec().contains(&v1);
+            let v2_in_polygon = polygon.vertices_vec().contains(&v2);
+
+            if v1_in_polygon && v2_in_polygon {
+                // If they're adjacent vertices in the polygon, they're visible
+                let vertices = polygon.vertices_vec();
+                let n = vertices.len();
+                for i in 0..n {
+                    let j = (i + 1) % n;
+                    if (vertices[i] == v1 && vertices[j] == v2)
+                        || (vertices[i] == v2 && vertices[j] == v1)
+                    {
+                        return true;
+                    }
+                }
+                // Non-adjacent vertices of the same polygon can't see each other
+                return false;
+            }
+
+            // Check if the line segment intersects this polygon
+            if polygon.intersects_segment(&v1, &v2) {
+                return false;
+            }
+        }
+
+        true
     }
 
     /// Counts all possible simple paths (no repeated vertices) from start to goal using DFS
