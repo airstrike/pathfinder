@@ -1,6 +1,7 @@
 use crate::{Board, Point};
 use iced::widget::canvas::{Fill, Frame, LineDash, Path, Stroke, Text};
 use iced::Color;
+use num_traits::{AsPrimitive, Signed};
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap, HashSet};
 
@@ -23,16 +24,30 @@ impl std::fmt::Display for Heuristic {
 impl Heuristic {
     pub const ALL: &'static [Heuristic] = &[Heuristic::Euclidean, Heuristic::Manhattan];
 
-    fn to_function(&self) -> Box<dyn Fn(&Point, &Point) -> i32> {
+    pub fn distance<T>(self, p1: &Point<T>, p2: &Point<T>) -> T
+    where
+        T: Copy
+            + Default
+            + Signed
+            + std::ops::Sub<Output = T>
+            + std::ops::Add<Output = T>
+            + std::ops::Mul<Output = T>
+            + AsPrimitive<f64>,
+        f64: AsPrimitive<T>,
+    {
         match self {
             Heuristic::Manhattan => {
-                Box::new(|p1: &Point, p2: &Point| (p2.x - p1.x).abs() + (p2.y - p1.y).abs())
+                let dx = num_traits::abs(p2.x - p1.x);
+                let dy = num_traits::abs(p2.y - p1.y);
+                dx + dy
             }
-            Heuristic::Euclidean => Box::new(|p1: &Point, p2: &Point| {
+            Heuristic::Euclidean => {
                 let dx = p2.x - p1.x;
                 let dy = p2.y - p1.y;
-                ((dx * dx + dy * dy) as f64).sqrt() as i32
-            }),
+                let squared = dx * dx + dy * dy;
+                let float_result = squared.as_();
+                (float_result.sqrt()).as_()
+            }
         }
     }
 }
@@ -186,7 +201,7 @@ impl Search {
         open_set.push(SearchNode {
             vertex: self.start,
             g_score: 0,
-            f_score: (self.heuristic.to_function())(&self.start, &self.goal),
+            f_score: self.heuristic.distance(&self.start, &self.goal),
         });
         self.state.g_scores.insert(self.start, 0);
 
@@ -227,7 +242,7 @@ impl Search {
                             vertex: neighbor,
                             g_score: tentative_g_score,
                             f_score: tentative_g_score
-                                + (self.heuristic.to_function())(&neighbor, &self.goal),
+                                + self.heuristic.distance(&neighbor, &self.goal),
                         });
                         self.state.open.insert(neighbor);
                     }
