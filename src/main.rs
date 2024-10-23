@@ -1,6 +1,7 @@
 use iced::widget::canvas::{self, Cache, Canvas, Geometry};
 use iced::widget::{
-    button, center, checkbox, column, container, horizontal_space, pick_list, responsive, row, text,
+    button, center, checkbox, column, container, horizontal_space, pick_list, responsive, row,
+    slider, text,
 };
 use iced::Alignment::Center;
 use iced::{keyboard, mouse, time, window, Renderer, Theme};
@@ -8,17 +9,15 @@ use iced::{Element, Length, Rectangle, Subscription, Task};
 use std::time::Duration;
 
 mod board;
-mod interactive;
 mod point;
 mod polygon;
 mod search;
 mod vector;
 
 pub use board::Board;
-pub use interactive::{Heuristic, InteractiveSearch};
 pub use point::Point;
 pub use polygon::{Edge, Polygon};
-pub use search::Search;
+pub use search::{Heuristic, Search};
 pub use vector::Vector;
 
 fn main() -> iced::Result {
@@ -38,7 +37,7 @@ struct App {
     board: Board,
     is_playing: bool,
     heuristic: Heuristic,
-    interactive: InteractiveSearch,
+    search: Search,
     start: Point,
     goal: Point,
     show_solution: bool,
@@ -50,13 +49,14 @@ impl Default for App {
         let start = Point::new(board.bounds().0, board.bounds().1);
         let heuristic = Heuristic::default();
         let goal = Point::new(board.bounds().2, board.bounds().3);
+        let search = Search::new(board.clone(), start, goal, heuristic);
 
         Self {
             cache: Cache::default(),
             heuristic,
             start,
             goal,
-            interactive: InteractiveSearch::new(board.clone(), start, goal, heuristic),
+            search,
             board,
             is_playing: false,
             show_solution: false,
@@ -73,8 +73,10 @@ pub enum Message {
     SetStart(Point),
     SetGoal(Point),
     Tick,
+    Back,
     Next,
     Reset,
+    JumpTo(f32),
 }
 
 impl App {
@@ -84,6 +86,16 @@ impl App {
 
     pub fn theme(&self) -> Theme {
         Theme::TokyoNightLight
+    }
+
+    fn slide(&self) -> Element<'_, Message> {
+        slider(
+            0.0..=self.search.total_steps() as f32 - 1.0,
+            self.search.current_step() as f32,
+            Message::JumpTo,
+        )
+        .width(Length::Fill)
+        .into()
     }
 
     fn view(&self) -> Element<Message> {
@@ -100,7 +112,8 @@ impl App {
                     )
                     .into()
                 }),
-                view_controls(self.is_playing, self.show_solution, self.heuristic),
+                self.slide(),
+                self.controls(),
             ]
             .align_x(Center)
             .width(Length::Fill)
@@ -123,53 +136,52 @@ impl App {
                 Task::none()
             }
             Message::PickHeuristic(heuristic) => {
+                self.is_playing = false;
                 self.heuristic = heuristic;
-                self.interactive = InteractiveSearch::new(
-                    self.board.clone(),
-                    self.start,
-                    self.goal,
-                    self.heuristic,
-                );
+                self.search =
+                    Search::new(self.board.clone(), self.start, self.goal, self.heuristic);
+                self.cache.clear();
                 Task::none()
             }
             Message::SetStart(start) => {
                 self.start = start;
-                self.interactive = InteractiveSearch::new(
-                    self.board.clone(),
-                    self.start,
-                    self.goal,
-                    self.heuristic,
-                );
+                self.search =
+                    Search::new(self.board.clone(), self.start, self.goal, self.heuristic);
                 Task::none()
             }
             Message::SetGoal(goal) => {
                 self.goal = goal;
-                self.interactive = InteractiveSearch::new(
-                    self.board.clone(),
-                    self.start,
-                    self.goal,
-                    self.heuristic,
-                );
+                self.search =
+                    Search::new(self.board.clone(), self.start, self.goal, self.heuristic);
                 Task::none()
             }
             Message::Tick => {
                 if self.is_playing {
-                    if !self.interactive.step() {
+                    if !self.search.step_forward() {
                         self.is_playing = false;
                     }
                     self.cache.clear();
                 }
                 Task::none()
             }
+            Message::Back => {
+                self.is_playing = false;
+                self.search.step_back();
+                Task::none()
+            }
             Message::Next => {
-                if !self.interactive.step() {
-                    self.is_playing = false;
-                }
+                self.is_playing = false;
+                self.search.step_forward();
+                self.cache.clear();
+                Task::none()
+            }
+            Message::JumpTo(step) => {
+                self.search.jump_to(step as usize);
                 self.cache.clear();
                 Task::none()
             }
             Message::Reset => {
-                self.interactive.reset();
+                self.search.reset();
                 self.cache.clear();
                 Task::none()
             }
@@ -195,6 +207,72 @@ impl App {
         };
 
         iced::Subscription::batch(batch)
+    }
+
+    fn controls<'a>(&self) -> Element<'a, Message> {
+        row![
+            button(text("Reset").align_x(Center))
+                .style(style::reset)
+                .width(Length::Fixed(100.0))
+                .on_press(Message::Reset),
+            button(
+                text(if !self.search.is_finished() {
+                    match self.is_playing {
+                        true => "Pause",
+                        false => {
+                            if self.search.current_step() > 0 {
+                                "Resume"
+                            } else {
+                                "Play"
+                            }
+                        }
+                    }
+                } else {
+                    "Play"
+                })
+                .align_x(Center)
+            )
+            .style(style::control)
+            .width(Length::Fixed(100.0))
+            .on_press_maybe(if !self.search.is_finished() {
+                Some(Message::TogglePlay)
+            } else {
+                None
+            }),
+            horizontal_space(),
+            row![
+                container(text("Heuristic:")).padding(5).align_y(Center),
+                pick_list(Heuristic::ALL, Some(self.heuristic), Message::PickHeuristic)
+            ],
+            horizontal_space(),
+            container(
+                checkbox("Show Solution", self.show_solution)
+                    .on_toggle(|_| { Message::ToggleSolution })
+            )
+            .align_y(Center)
+            .padding(5),
+            horizontal_space(),
+            button(text("Back").align_x(Center))
+                .style(style::control)
+                .width(Length::Fixed(100.0))
+                .on_press_maybe(if self.search.current_step() > 0 {
+                    Some(Message::Back)
+                } else {
+                    None
+                }),
+            button(text("Next").align_x(Center))
+                .style(style::control)
+                .width(Length::Fixed(100.0))
+                .on_press_maybe(if !self.search.is_finished() {
+                    Some(Message::Next)
+                } else {
+                    None
+                }),
+        ]
+        .spacing(5)
+        .padding(5)
+        .width(Length::Fill)
+        .into()
     }
 }
 
@@ -234,7 +312,7 @@ impl canvas::Program<Message> for App {
             frame.scale(scaling);
             board.draw(frame);
 
-            self.interactive.draw(frame, self.show_solution);
+            self.search.draw(frame, self.show_solution);
         });
 
         vec![geometry]
@@ -248,46 +326,6 @@ fn toggle_fullscreen() -> Task<Message> {
             window::Mode::Fullscreen => window::change_mode(id, window::Mode::Windowed),
             _ => window::change_mode(id, window::Mode::Fullscreen),
         })
-}
-
-fn view_controls<'a>(
-    is_playing: bool,
-    show_solution: bool,
-    heuristic: Heuristic,
-) -> Element<'a, Message> {
-    row![
-        button("Reset")
-            .style(style::reset)
-            .width(Length::Fixed(100.0))
-            .on_press(Message::Reset),
-        button(match is_playing {
-            true => "Pause",
-            false => "Play",
-        })
-        .style(style::control)
-        .width(Length::Fixed(100.0))
-        .on_press(Message::TogglePlay),
-        horizontal_space(),
-        row![
-            container(text("Heuristic:")).padding(5).align_y(Center),
-            pick_list(Heuristic::ALL, Some(heuristic), Message::PickHeuristic)
-        ],
-        horizontal_space(),
-        container(
-            checkbox("Show Solution", show_solution).on_toggle(|_| { Message::ToggleSolution })
-        )
-        .align_y(Center)
-        .padding(5),
-        horizontal_space(),
-        button("Step")
-            .style(style::control)
-            .width(Length::Fixed(100.0))
-            .on_press(Message::Next),
-    ]
-    .spacing(5)
-    .padding(5)
-    .width(Length::Fill)
-    .into()
 }
 
 mod style {
@@ -311,9 +349,16 @@ mod style {
             ..active
         };
 
+        let disabled = button::Style {
+            background: Some(colors.background.strong.color.into()),
+            text_color: colors.background.base.text,
+            ..active
+        };
+
         match status {
             button::Status::Pressed => active,
             button::Status::Hovered => hovered,
+            button::Status::Disabled => disabled,
             _ => active,
         }
     }

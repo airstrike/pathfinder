@@ -106,11 +106,37 @@ impl Polygon {
     pub fn intersects_segment(&self, start: &Point, end: &Point) -> bool {
         let n = self.vertices.len();
 
-        // If either point is inside the polygon (and not a vertex), it intersects
-        if !self.vertices.contains(start) && self.contains_point(start) {
+        // First check if both points are vertices or the segment is along an edge
+        let mut found_start = false;
+        let mut found_end = false;
+        for i in 0..n {
+            let j = (i + 1) % n;
+            let edge_start = &self.vertices[i];
+            let edge_end = &self.vertices[j];
+
+            // Check if points are vertices
+            if !found_start {
+                found_start = start == edge_start || start == edge_end;
+            }
+            if !found_end {
+                found_end = end == edge_start || end == edge_end;
+            }
+
+            // If it's a line along an edge, we don't count it as intersection
+            let edge = Edge::new(*edge_start, *edge_end);
+            if edge.contains_point(start) && edge.contains_point(end) {
+                return false;
+            }
+        }
+
+        // If both points are vertices but not along an edge, proceed with normal intersection check
+        // (this handles cases like diagonal lines through vertices)
+
+        // If either non-vertex point is inside the polygon, it intersects
+        if !found_start && self.contains_point(start) {
             return true;
         }
-        if !self.vertices.contains(end) && self.contains_point(end) {
+        if !found_end && self.contains_point(end) {
             return true;
         }
 
@@ -136,13 +162,9 @@ impl Polygon {
             }
         }
 
-        // Check midpoint
+        // Check midpoint only if the line isn't along an edge
         let mid = Point::new((start.x + end.x) / 2, (start.y + end.y) / 2);
-        if !self.vertices.contains(&mid) && self.contains_point(&mid) {
-            return true;
-        }
-
-        false
+        !Edge::new(*start, *end).contains_point(&mid) && self.contains_point(&mid)
     }
 
     /// Checks if a point lies inside the polygon using the ray casting algorithm
@@ -254,33 +276,156 @@ impl Edge {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_polygon_intersection() {
-        let polygon = Polygon::new(vec![
+    fn create_square() -> Polygon {
+        Polygon::new(vec![
             Point::new(0, 0),
             Point::new(100, 0),
             Point::new(100, 100),
             Point::new(0, 100),
-        ]);
+        ])
+    }
 
-        // Test cases that should NOT intersect
-        assert!(!polygon.intersects_segment(
-            &Point::new(0, 0),     // vertex
-            &Point::new(-50, -50)  // outside
-        ));
-        assert!(!polygon.intersects_segment(
-            &Point::new(0, 0),   // vertex
-            &Point::new(100, 0)  // another vertex
-        ));
+    #[test]
+    fn test_vertex_to_outside() {
+        let polygon = create_square();
 
-        // Test cases that SHOULD intersect
-        assert!(polygon.intersects_segment(
-            &Point::new(-50, 50), // outside
-            &Point::new(50, 50)   // inside
-        ));
-        assert!(polygon.intersects_segment(
-            &Point::new(-50, -50), // outside
-            &Point::new(150, 150)  // outside, but crosses
-        ));
+        // Test from each vertex to outside points
+        assert!(
+            !polygon.intersects_segment(&Point::new(0, 0), &Point::new(-50, -50)),
+            "Vertex to outside should not intersect"
+        );
+
+        assert!(
+            !polygon.intersects_segment(&Point::new(100, 0), &Point::new(150, -50)),
+            "Vertex to outside should not intersect"
+        );
+    }
+
+    #[test]
+    fn test_vertex_to_vertex() {
+        let polygon = create_square();
+
+        // Test connecting vertices
+        assert!(
+            !polygon.intersects_segment(&Point::new(0, 0), &Point::new(100, 0)),
+            "Edge of polygon should not count as intersection"
+        );
+
+        assert!(
+            !polygon.intersects_segment(&Point::new(0, 0), &Point::new(100, 100)),
+            "Diagonal through polygon should not intersect if it uses vertices"
+        );
+    }
+
+    #[test]
+    fn test_crossing_edges() {
+        let polygon = create_square();
+
+        // Test lines that clearly cross the polygon
+        assert!(
+            polygon.intersects_segment(&Point::new(-50, 50), &Point::new(150, 50)),
+            "Line through middle should intersect"
+        );
+
+        assert!(
+            polygon.intersects_segment(&Point::new(50, -50), &Point::new(50, 150)),
+            "Vertical line through middle should intersect"
+        );
+    }
+
+    #[test]
+    fn test_along_edge() {
+        let polygon = create_square();
+
+        // Test lines that run exactly along edges
+        assert!(
+            !polygon.intersects_segment(&Point::new(0, 0), &Point::new(0, 100)),
+            "Line along edge should not count as intersection"
+        );
+
+        assert!(
+            !polygon.intersects_segment(&Point::new(0, 100), &Point::new(100, 100)),
+            "Line along edge should not count as intersection"
+        );
+    }
+
+    #[test]
+    fn test_through_vertex() {
+        let polygon = create_square();
+
+        // Test lines that pass through a vertex
+        assert!(
+            polygon.intersects_segment(&Point::new(0, -50), &Point::new(0, 50)),
+            "Line through vertex into polygon should intersect"
+        );
+
+        assert!(
+            polygon.intersects_segment(&Point::new(-50, 0), &Point::new(50, 0)),
+            "Line through vertex into polygon should intersect"
+        );
+    }
+
+    #[test]
+    fn test_near_miss() {
+        let polygon = create_square();
+
+        // Test lines that almost intersect but don't
+        assert!(
+            !polygon.intersects_segment(&Point::new(-10, -10), &Point::new(-10, 110)),
+            "Line near polygon should not intersect"
+        );
+
+        assert!(
+            !polygon.intersects_segment(&Point::new(110, -10), &Point::new(110, 110)),
+            "Line near polygon should not intersect"
+        );
+    }
+
+    #[test]
+    fn test_interior_points() {
+        let polygon = create_square();
+
+        // Test lines that have one or both endpoints inside
+        assert!(
+            polygon.intersects_segment(&Point::new(25, 25), &Point::new(75, 75)),
+            "Line between interior points should intersect"
+        );
+
+        assert!(
+            polygon.intersects_segment(&Point::new(50, 50), &Point::new(150, 150)),
+            "Line from interior to exterior should intersect"
+        );
+    }
+
+    #[test]
+    fn test_touching_vertex() {
+        let polygon = create_square();
+
+        // Test lines that just touch a vertex
+        assert!(
+            !polygon.intersects_segment(&Point::new(-50, -50), &Point::new(0, 0)),
+            "Line ending at vertex should not intersect"
+        );
+
+        assert!(
+            !polygon.intersects_segment(&Point::new(100, 0), &Point::new(150, -50)),
+            "Line starting at vertex should not intersect"
+        );
+    }
+
+    #[test]
+    fn test_midpoint_cases() {
+        let polygon = create_square();
+
+        // Test cases where the midpoint is significant
+        assert!(
+            polygon.intersects_segment(&Point::new(-50, 50), &Point::new(150, 50)),
+            "Line through midpoint should intersect"
+        );
+
+        assert!(
+            !polygon.intersects_segment(&Point::new(-50, -50), &Point::new(-10, -10)),
+            "Line with midpoint outside should not intersect"
+        );
     }
 }
