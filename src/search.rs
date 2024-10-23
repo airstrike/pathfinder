@@ -38,7 +38,7 @@ impl Heuristic {
 }
 
 #[derive(Clone, Debug)]
-struct SearchState {
+struct State {
     open: HashSet<Point>,
     closed: HashSet<Point>,
     current_paths: HashMap<Point, Vec<Point>>,
@@ -56,9 +56,9 @@ pub struct Search {
     goal: Point,
     heuristic: Heuristic,
     optimal_path: Option<(Vec<Point>, i32)>,
-    state: SearchState,
+    state: State,
     current_step: usize,
-    history: Vec<SearchState>,
+    history: Vec<State>,
     visibility_graph: HashMap<Point, HashSet<Point>>,
 }
 
@@ -90,7 +90,7 @@ impl Search {
             heuristic,
             optimal_path: None,
             visibility_graph: HashMap::new(),
-            state: SearchState {
+            state: State {
                 open: HashSet::from([start]),
                 closed: HashSet::new(),
                 current_paths: HashMap::from([(start, vec![start])]),
@@ -104,17 +104,11 @@ impl Search {
             history: Vec::new(),
         };
 
-        // Build visibility graph
+        // Build visibility graph for this board, compute solution and history
         search.visibility_graph = search.build_visibility_graph();
-
-        // Compute initial solution and history
         search.compute_optimal_path();
-
-        // Save initial state
         search.history.push(search.state.clone());
-
-        // Reset to initial state
-        search.reset();
+        search.reset(); // Return to step 0
 
         search
     }
@@ -269,7 +263,7 @@ impl Search {
                 (from.x as f32, -from.y as f32).into(), // Flip y-coordinate
                 (to.x as f32, -to.y as f32).into(),     // Flip y-coordinate
             );
-            frame.stroke(&path, historical_stroke.clone());
+            frame.stroke(&path, historical_stroke);
         }
 
         // Draw current active paths
@@ -297,7 +291,7 @@ impl Search {
                         (from.x as f32, -from.y as f32).into(), // Flip y-coordinate
                         (to.x as f32, -to.y as f32).into(),     // Flip y-coordinate
                     );
-                    frame.stroke(&path, current_stroke.clone());
+                    frame.stroke(&path, current_stroke);
                 }
             }
         }
@@ -315,7 +309,7 @@ impl Search {
                     (from.x as f32, -from.y as f32).into(), // Flip y-coordinate
                     (to.x as f32, -to.y as f32).into(),     // Flip y-coordinate
                 );
-                frame.stroke(&path, best_stroke.clone());
+                frame.stroke(&path, best_stroke);
             }
 
             if let Some(last) = path.last() {
@@ -357,7 +351,7 @@ impl Search {
                         (from.x as f32, -from.y as f32).into(), // Flip y-coordinate
                         (to.x as f32, -to.y as f32).into(),     // Flip y-coordinate
                     );
-                    frame.stroke(&path, solution_stroke.clone());
+                    frame.stroke(&path, solution_stroke);
                 }
 
                 if let Some(last) = path.last() {

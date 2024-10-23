@@ -13,7 +13,7 @@ pub struct Board {
 
 impl Default for Board {
     fn default() -> Self {
-        create_problem_board()
+        sample_board()
     }
 }
 
@@ -74,8 +74,8 @@ impl Board {
                 (x as f32, -max_y as f32).into(),         // Flip y-coordinate
                 (x as f32, -(max_y as f32 - 2.5)).into(), // Flip y-coordinate
             );
-            frame.stroke(&min_tick, tick_stroke.clone());
-            frame.stroke(&max_tick, tick_stroke.clone());
+            frame.stroke(&min_tick, tick_stroke);
+            frame.stroke(&max_tick, tick_stroke);
             frame.fill_text(Text {
                 content: x.to_string(),
                 position: (x as f32, -(min_y as f32 - 2.5)).into(), // Flip y-coordinate
@@ -95,8 +95,8 @@ impl Board {
                 (max_x as f32, -y as f32).into(),       // Flip y-coordinate
                 (max_x as f32 - 2.5, -y as f32).into(), // Flip y-coordinate
             );
-            frame.stroke(&min_tick, tick_stroke.clone());
-            frame.stroke(&max_tick, tick_stroke.clone());
+            frame.stroke(&min_tick, tick_stroke);
+            frame.stroke(&max_tick, tick_stroke);
             frame.fill_text(Text {
                 content: y.to_string(),
                 position: (min_x as f32 - 2.5, -y as f32 - 2.5).into(), // Flip y-coordinate
@@ -152,8 +152,8 @@ impl Board {
     }
 }
 
-// Helper function to create the board from the problem description
-pub fn create_problem_board() -> Board {
+/// Create a sample board with some polygons
+pub fn sample_board() -> Board {
     let polygons = vec![
         Polygon::new(vec![
             (220, 616).into(),
