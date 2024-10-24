@@ -4,7 +4,7 @@ use palette::{Darken, Srgba};
 
 use crate::Point;
 
-/// Static slice of pastelish colors for drawing polygons
+/// Static slice of pastelish colors for drawing polygons. Thanks, ChatGPT!
 const COLORS: [Color; 16] = [
     color!(255, 179, 186), // Light Pink
     color!(255, 223, 186), // Peach
@@ -24,22 +24,23 @@ const COLORS: [Color; 16] = [
     color!(186, 255, 223), // Aqua Mint
 ];
 
-/// Darkens a given iced::Color by a percentage using the palette crate
+/// Darkens a given [`Color`] by a percentage
 fn darken(color: Color, factor: f32) -> Color {
     let srgba: Srgba = color.into();
     let darkened = srgba.darken(factor);
     Color::from(darkened)
 }
 
-/// Represents a convex polygon obstacle on the board.
+/// Represents a convex [`Polygon`] obstacle on the board.
+///
 /// Vertices are stored in clockwise or counter-clockwise order.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Polygon {
-    /// The vertices that make up the polygon, stored in order
+    /// The vertices that make up the [`Polygon`], stored in order
     vertices: Vec<Point>,
 }
 
-/// Represents the orientation of three points in 2D space
+/// Represents the [`Orientation`] of three [`Point`]s in 2D space
 #[derive(Debug, PartialEq, Eq)]
 enum Orientation {
     Collinear,
@@ -47,7 +48,7 @@ enum Orientation {
     Counterclockwise,
 }
 
-// Helper function to determine orientation of three points
+// Helper function to determine [`Orientation`] of three [`Point`]s
 fn orientation(p: &Point, q: &Point, r: &Point) -> Orientation {
     let val = (q.y - p.y) * (r.x - q.x) - (q.x - p.x) * (r.y - q.y);
 
@@ -59,11 +60,13 @@ fn orientation(p: &Point, q: &Point, r: &Point) -> Orientation {
 }
 
 impl Polygon {
-    /// Creates a new polygon from a vector of points
+    /// Creates a new [`Polygon`] from a vector of [`Point`]s
     pub fn new(vertices: Vec<Point>) -> Self {
         Self { vertices }
     }
 
+    /// Compute the center [`Point`] of the [`Polygon`] as the average of its
+    /// vertices
     pub fn center(&self) -> Point {
         let n = self.vertices.len() as i32;
         let mut x = 0;
@@ -77,17 +80,17 @@ impl Polygon {
         Point::new(x / n, y / n)
     }
 
-    /// Returns an iterator over the vertices of the polygon
+    /// Returns an iterator over the vertices of the [`Polygon`]
     pub fn vertices(&self) -> impl Iterator<Item = &Point> {
         self.vertices.iter()
     }
 
-    /// Returns all vertices as a vector of points
+    /// Returns all vertices as a vector of [`Point`]s
     pub fn vertices_vec(&self) -> Vec<Point> {
         self.vertices.clone()
     }
 
-    /// Returns the outer edges of the polygon as directed edges
+    /// Returns the outer [`Edge`]s of the [`Polygon`] as directed edges
     pub fn outer_edges(&self) -> Vec<Edge> {
         let vertices = &self.vertices;
         let n = vertices.len();
@@ -102,7 +105,7 @@ impl Polygon {
         edges
     }
 
-    /// Determines if a line segment intersects with the polygon
+    /// Determine if a line segment intersects with the [`Polygon`]
     pub fn intersects_segment(&self, start: &Point, end: &Point) -> bool {
         let n = self.vertices.len();
 
@@ -129,8 +132,9 @@ impl Polygon {
             }
         }
 
-        // If both points are vertices but not along an edge, proceed with normal intersection check
-        // (this handles cases like diagonal lines through vertices)
+        // If both points are vertices but not along an edge, proceed with
+        // normal intersection check (this handles cases like diagonal lines
+        // through vertices)
 
         // If either non-vertex point is inside the polygon, it intersects
         if !found_start && self.contains_point(start) {
@@ -193,7 +197,7 @@ impl Polygon {
         inside
     }
 
-    /// Draws the polygon on the canvas
+    /// Draw the [`Polygon`] on a canvas [`Frame`] at a given index
     pub fn draw(&self, index: usize, frame: &mut Frame) {
         let fill_color = COLORS[index % COLORS.len()];
         let stroke_color = darken(fill_color, 0.5);
@@ -223,7 +227,7 @@ impl Polygon {
     }
 }
 
-/// Represents a directed edge between two points
+/// Represents a directed [`Edge`] between two [`Point`]s
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Edge {
     pub start: Point,

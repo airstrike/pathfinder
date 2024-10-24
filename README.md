@@ -81,9 +81,9 @@ If I had infinite free time, I'd implement some or all of the below. The current
 code base makes some of these quite straightforward to implement, so if anyone's
 up for it and submits a PR with tests, I'd be happy to merge it.
 
+- [ ] Better bounds and polygon check for changing start/goal points
 - [ ] Add support for custom boards
 - [ ] Add support for custom obstacle placement
-- [ ] Add support for custom start and goal placement
 - [ ] Implement additional visualization modes (e.g., heatmaps, path cost, etc.)
 - [ ] Add support for additional pathfinding algorithms (Dijkstra, BFS, etc.)
 

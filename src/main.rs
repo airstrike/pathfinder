@@ -1,11 +1,11 @@
-use iced::widget::canvas::{self, Cache, Canvas, Geometry};
+use iced::widget::canvas::{self, Cache, Canvas, Event, Geometry};
 use iced::widget::{
     button, center, checkbox, column, container, horizontal_space, pick_list, responsive, row,
     slider, text,
 };
 use iced::Alignment::Center;
-use iced::{keyboard, mouse, time, window, Renderer, Theme};
-use iced::{Element, Length, Rectangle, Subscription, Task};
+use iced::{event, keyboard, mouse, time, window};
+use iced::{Element, Length, Rectangle, Renderer, Subscription, Task, Theme};
 use std::time::Duration;
 
 mod board;
@@ -33,7 +33,8 @@ fn main() -> iced::Result {
 }
 
 struct App {
-    cache: Cache,
+    board_cache: Cache,
+    search_cache: Cache,
     board: Board,
     is_playing: bool,
     heuristic: Heuristic,
@@ -52,7 +53,8 @@ impl Default for App {
         let search = Search::new(board.clone(), start, goal, heuristic);
 
         Self {
-            cache: Cache::default(),
+            board_cache: Cache::default(),
+            search_cache: Cache::default(),
             heuristic,
             start,
             goal,
@@ -65,8 +67,10 @@ impl Default for App {
 }
 
 #[derive(Clone, Debug)]
-pub enum Message {
+enum Message {
     ToggleFullscreen,
+    ChangeMode(window::Mode),
+
     TogglePlay,
     ToggleSolution,
     PickHeuristic(Heuristic),
@@ -76,15 +80,16 @@ pub enum Message {
     Back,
     Next,
     Reset,
+    Finish,
     JumpTo(f32),
 }
 
 impl App {
-    pub fn new() -> (Self, Task<Message>) {
+    fn new() -> (Self, Task<Message>) {
         (Self::default(), Task::none())
     }
 
-    pub fn theme(&self) -> Theme {
+    fn theme(&self) -> Theme {
         Theme::TokyoNightLight
     }
 
@@ -126,13 +131,16 @@ impl App {
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::ToggleFullscreen => toggle_fullscreen(),
+            Message::ChangeMode(mode) => {
+                window::get_latest().and_then(move |id| window::change_mode(id, mode))
+            }
             Message::TogglePlay => {
                 self.is_playing = !self.is_playing;
                 Task::none()
             }
             Message::ToggleSolution => {
                 self.show_solution = !self.show_solution;
-                self.cache.clear();
+                self.search_cache.clear();
                 Task::none()
             }
             Message::PickHeuristic(heuristic) => {
@@ -140,19 +148,29 @@ impl App {
                 self.heuristic = heuristic;
                 self.search =
                     Search::new(self.board.clone(), self.start, self.goal, self.heuristic);
-                self.cache.clear();
+                self.search_cache.clear();
                 Task::none()
             }
             Message::SetStart(start) => {
+                let is_finished = self.search.is_finished();
                 self.start = start;
                 self.search =
                     Search::new(self.board.clone(), self.start, self.goal, self.heuristic);
+                if is_finished {
+                    self.search.jump_to(self.search.total_steps());
+                }
+                self.search_cache.clear();
                 Task::none()
             }
             Message::SetGoal(goal) => {
+                let is_finished = self.search.is_finished();
                 self.goal = goal;
                 self.search =
                     Search::new(self.board.clone(), self.start, self.goal, self.heuristic);
+                if is_finished {
+                    self.search.jump_to(self.search.total_steps());
+                }
+                self.search_cache.clear();
                 Task::none()
             }
             Message::Tick => {
@@ -160,30 +178,36 @@ impl App {
                     if !self.search.step_forward() {
                         self.is_playing = false;
                     }
-                    self.cache.clear();
+                    self.search_cache.clear();
                 }
                 Task::none()
             }
             Message::Back => {
                 self.is_playing = false;
                 self.search.step_back();
-                self.cache.clear();
+                self.search_cache.clear();
                 Task::none()
             }
             Message::Next => {
                 self.is_playing = false;
                 self.search.step_forward();
-                self.cache.clear();
+                self.search_cache.clear();
                 Task::none()
             }
             Message::JumpTo(step) => {
                 self.search.jump_to(step as usize);
-                self.cache.clear();
+                self.search_cache.clear();
                 Task::none()
             }
             Message::Reset => {
                 self.search.reset();
-                self.cache.clear();
+                self.search_cache.clear();
+                Task::none()
+            }
+            Message::Finish => {
+                self.is_playing = false;
+                self.search.jump_to(self.search.total_steps());
+                self.search_cache.clear();
                 Task::none()
             }
         }
@@ -199,6 +223,12 @@ impl App {
 
             match (key, modifiers) {
                 (key::Named::F11, keyboard::Modifiers::SHIFT) => Some(Message::ToggleFullscreen),
+                (key::Named::Escape, _) => Some(Message::ChangeMode(window::Mode::Windowed)),
+                (key::Named::Space, _) => Some(Message::TogglePlay),
+                (key::Named::ArrowLeft, _) => Some(Message::Back),
+                (key::Named::ArrowRight, _) => Some(Message::Next),
+                (key::Named::Home, _) => Some(Message::Reset),
+                (key::Named::End, _) => Some(Message::Finish),
                 _ => None,
             }
         })];
@@ -275,6 +305,40 @@ impl App {
         .width(Length::Fill)
         .into()
     }
+
+    // Helper function to calculate transformation parameters
+    fn get_transform_params(&self, bounds: Rectangle) -> (f32, iced::Vector) {
+        let (min_x, min_y, max_x, max_y) = self.board.bounds();
+
+        let board_width = (max_x - min_x) as f32;
+        let board_height = (max_y - min_y) as f32;
+
+        // Calculate the scaling to center board within frame and its new size
+        let scaling: f32 = 0.8 * (bounds.width / board_width).min(bounds.height / board_height);
+        let scaled_width = board_width * scaling;
+        let scaled_height = board_height * scaling;
+
+        // Calculate translation to center the scaled board within the frame
+        let translation = iced::Vector::new(
+            (bounds.width - scaled_width) / 2.0 - (min_x as f32 * scaling),
+            (bounds.height - scaled_height) / 2.0 + (max_y as f32 * scaling),
+        );
+
+        (scaling, translation)
+    }
+
+    // Helper function to transform screen coordinates to board coordinates
+    fn screen_to_board_coords(&self, screen_pos: iced::Point, bounds: Rectangle) -> Point {
+        let (scaling, translation) = self.get_transform_params(bounds);
+
+        let board_x = (screen_pos.x - translation.x) / scaling;
+
+        // Since the board already flips y coordinates when drawing,
+        // we need to work with that convention
+        let board_y = -(screen_pos.y - translation.y) / scaling;
+
+        Point::new(board_x as i32, board_y as i32)
+    }
 }
 
 impl canvas::Program<Message> for App {
@@ -288,37 +352,55 @@ impl canvas::Program<Message> for App {
         bounds: Rectangle,
         _cursor: mouse::Cursor,
     ) -> Vec<Geometry> {
-        let geometry = self.cache.draw(renderer, bounds.size(), |frame| {
-            let board = Board::default();
-            let (min_x, min_y, max_x, max_y) = board.bounds();
+        let (scaling, translation) = self.get_transform_params(bounds);
 
-            // Calculate the board's original bounding rectangle
-            let board_width = (max_x - min_x) as f32;
-            let board_height = (max_y - min_y) as f32;
-
-            // Calculate the scaling factor to make the board fit within 80% of the frame size
-            let scaling: f32 = 0.8 * (bounds.width / board_width).min(bounds.height / board_height);
-
-            // Calculate the new size of the scaled board
-            let scaled_width = board_width * scaling;
-            let scaled_height = board_height * scaling;
-
-            // Calculate translation to center the scaled board within the frame
-            // We need to flip the y-coordinate translation to match our mathematical coordinate system
-            let translation = iced::Vector::new(
-                (bounds.width - scaled_width) / 2.0 - (min_x as f32 * scaling),
-                bounds.height - (bounds.height - scaled_height) / 2.0 + (min_y as f32 * scaling),
-            );
-
-            // Apply the transformations in the correct order:
+        let board = self.board_cache.draw(renderer, bounds.size(), |frame| {
             frame.translate(translation);
             frame.scale(scaling);
+            self.board.draw(frame);
+        });
 
-            board.draw(frame);
+        let search = self.search_cache.draw(renderer, bounds.size(), |frame| {
+            frame.translate(translation);
+            frame.scale(scaling);
             self.search.draw(frame, self.show_solution);
         });
 
-        vec![geometry]
+        vec![board, search]
+    }
+
+    fn update(
+        &self,
+        _interaction: &mut (),
+        event: Event,
+        bounds: Rectangle,
+        cursor: mouse::Cursor,
+    ) -> (event::Status, Option<Message>) {
+        let Some(cursor_position) = cursor.position_in(bounds) else {
+            return (event::Status::Ignored, None);
+        };
+
+        match event {
+            Event::Mouse(mouse_event) => match mouse_event {
+                mouse::Event::ButtonPressed(button) => {
+                    let message = match button {
+                        mouse::Button::Left => {
+                            let new_start = self.screen_to_board_coords(cursor_position, bounds);
+                            Some(Message::SetStart(new_start))
+                        }
+                        mouse::Button::Right => {
+                            let new_goal = self.screen_to_board_coords(cursor_position, bounds);
+                            Some(Message::SetGoal(new_goal))
+                        }
+                        _ => None,
+                    };
+
+                    (event::Status::Captured, message)
+                }
+                _ => (event::Status::Ignored, None),
+            },
+            _ => (event::Status::Ignored, None),
+        }
     }
 }
 

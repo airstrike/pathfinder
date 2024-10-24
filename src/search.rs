@@ -333,12 +333,15 @@ impl Search {
                     .map(|window| Self::distance(&window[0], &window[1]))
                     .sum();
 
-                frame.fill_text(Text {
-                    content: format!(
-                        "Current best: {}\nTo goal: {}",
-                        current_path_score, best_distance_to_goal
+                let content = match best_distance_to_goal {
+                    0 => format!("Goal: {current_path_score}"),
+                    _ => format!(
+                        "Current best: {current_path_score}\nTo goal: {best_distance_to_goal}"
                     ),
-                    position: (last.x as f32 + 5.0, -last.y as f32 + 5.0).into(), // Flip y-coordinate
+                };
+                frame.fill_text(Text {
+                    content,
+                    position: (last.x as f32 + 2.5, -last.y as f32 + 2.5).into(),
                     color: Color::BLACK,
                     size: 4.0.into(),
                     ..Text::default()
@@ -372,7 +375,7 @@ impl Search {
                 if let Some(last) = path.last() {
                     frame.fill_text(Text {
                         content: format!("Optimal: {}", score),
-                        position: (last.x as f32 + 5.0, -last.y as f32 - 5.0).into(), // Flip y-coordinate
+                        position: (last.x as f32 + 5.0, -last.y as f32 - 5.0).into(),
                         color: Color::BLACK,
                         size: 4.0.into(),
                         ..Text::default()
@@ -383,26 +386,42 @@ impl Search {
 
         // Draw vertices
         for vertex in &self.state.open {
-            let circle = Path::circle((vertex.x as f32, -vertex.y as f32).into(), 1.0); // Flip y-coordinate
+            let circle = Path::circle((vertex.x as f32, -vertex.y as f32).into(), 1.0);
             frame.fill(&circle, Fill::from(Color::from_rgb8(0, 100, 255)));
         }
 
         for vertex in &self.state.closed {
-            let circle = Path::circle((vertex.x as f32, -vertex.y as f32).into(), 1.0); // Flip y-coordinate
+            let circle = Path::circle((vertex.x as f32, -vertex.y as f32).into(), 1.0);
             frame.fill(&circle, Fill::from(Color::from_rgb8(255, 100, 100)));
         }
 
         if let Some(next) = self.state.next_vertex {
-            let circle = Path::circle((next.x as f32, -next.y as f32).into(), 1.5); // Flip y-coordinate
+            let circle = Path::circle((next.x as f32, -next.y as f32).into(), 1.5);
             frame.fill(&circle, Fill::from(Color::from_rgb8(50, 205, 50)));
         }
 
         // Draw start and goal
-        let start_circle = Path::circle((self.start.x as f32, -self.start.y as f32).into(), 2.0); // Flip y-coordinate
+        let start_circle = Path::circle((self.start.x as f32, -self.start.y as f32).into(), 2.0);
         frame.fill(&start_circle, Fill::from(Color::from_rgb8(0, 0, 255)));
+        frame.fill_text(Text {
+            content: format!("({}, {})", self.start.x, self.start.y),
+            position: (self.start.x as f32, -self.start.y as f32 - 6.5).into(),
+            color: Color::BLACK,
+            size: 4.0.into(),
+            horizontal_alignment: iced::alignment::Horizontal::Center,
+            ..Text::default()
+        });
 
-        let goal_circle = Path::circle((self.goal.x as f32, -self.goal.y as f32).into(), 2.0); // Flip y-coordinate
+        let goal_circle = Path::circle((self.goal.x as f32, -self.goal.y as f32).into(), 2.0);
         frame.fill(&goal_circle, Fill::from(Color::from_rgb8(255, 0, 0)));
+        frame.fill_text(Text {
+            content: format!("({}, {})", self.goal.x, self.goal.y),
+            position: (self.goal.x as f32 - 2.5, -self.goal.y as f32 - 6.5).into(),
+            color: Color::BLACK,
+            size: 4.0.into(),
+            horizontal_alignment: iced::alignment::Horizontal::Center,
+            ..Text::default()
+        });
     }
 
     /// Calculate actual distance between two points

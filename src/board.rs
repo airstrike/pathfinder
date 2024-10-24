@@ -42,6 +42,8 @@ impl Board {
         self.polygons().flat_map(|p| p.outer_edges()).collect()
     }
 
+    /// Draw the board on the given frame. Note that y-coordinates are flipped
+    /// to match mathematical coordinates.
     pub fn draw(&self, frame: &mut Frame) {
         // Determine the bounds of the board by finding min/max coordinates of polygons
         let (min_x, min_y, max_x, max_y) = self.bounds();
@@ -63,22 +65,22 @@ impl Board {
             Stroke::default().with_color(Color::BLACK).with_width(2.0),
         );
 
-        // Draw tick marks every 100 units
+        // Draw x-axis tick marks every 50 units
         let tick_stroke = Stroke::default().with_color(Color::BLACK).with_width(1.0);
         for x in (min_x..=max_x).step_by(50) {
             let min_tick = Path::line(
-                (x as f32, -min_y as f32).into(),         // Flip y-coordinate
-                (x as f32, -(min_y as f32 + 2.5)).into(), // Flip y-coordinate
+                (x as f32, -min_y as f32).into(),
+                (x as f32, -(min_y as f32 + 2.5)).into(),
             );
             let max_tick = Path::line(
-                (x as f32, -max_y as f32).into(),         // Flip y-coordinate
-                (x as f32, -(max_y as f32 - 2.5)).into(), // Flip y-coordinate
+                (x as f32, -max_y as f32).into(),
+                (x as f32, -(max_y as f32 - 2.5)).into(),
             );
             frame.stroke(&min_tick, tick_stroke);
             frame.stroke(&max_tick, tick_stroke);
             frame.fill_text(Text {
                 content: x.to_string(),
-                position: (x as f32, -(min_y as f32 - 2.5)).into(), // Flip y-coordinate
+                position: (x as f32, -(min_y as f32 - 2.5)).into(),
                 color: Color::BLACK,
                 size: 4.0.into(),
                 horizontal_alignment: iced::alignment::Horizontal::Center,
@@ -86,20 +88,21 @@ impl Board {
             });
         }
 
+        // Draw y-axis tick marks every 50 units and flip y-coords throughout
         for y in (min_y..=max_y).step_by(50) {
             let min_tick = Path::line(
-                (min_x as f32, -y as f32).into(),       // Flip y-coordinate
-                (min_x as f32 + 2.5, -y as f32).into(), // Flip y-coordinate
+                (min_x as f32, -y as f32).into(),
+                (min_x as f32 + 2.5, -y as f32).into(),
             );
             let max_tick = Path::line(
-                (max_x as f32, -y as f32).into(),       // Flip y-coordinate
-                (max_x as f32 - 2.5, -y as f32).into(), // Flip y-coordinate
+                (max_x as f32, -y as f32).into(),
+                (max_x as f32 - 2.5, -y as f32).into(),
             );
             frame.stroke(&min_tick, tick_stroke);
             frame.stroke(&max_tick, tick_stroke);
             frame.fill_text(Text {
                 content: y.to_string(),
-                position: (min_x as f32 - 2.5, -y as f32 - 2.5).into(), // Flip y-coordinate
+                position: (min_x as f32 - 2.5, -y as f32 - 2.5).into(),
                 color: Color::BLACK,
                 size: 4.0.into(),
                 horizontal_alignment: iced::alignment::Horizontal::Right,
@@ -107,13 +110,12 @@ impl Board {
             });
         }
 
-        // Draw the polygons on the board
         for (i, polygon) in self.polygons().enumerate() {
             polygon.draw(i, frame);
         }
     }
 
-    /// Finds the bounding box of the board by getting the min/max x and y coordinates
+    /// Finds the board's bounding box by getting the min/max x and y coords
     pub fn bounds(&self) -> (i32, i32, i32, i32) {
         let mut min_x = i32::MAX;
         let mut max_x = i32::MIN;
@@ -129,7 +131,7 @@ impl Board {
             }
         }
 
-        // Round down/up to the nearest 100 for tick marks
+        // Round down/up to the nearest 100 to make it look nicer
         min_x = (min_x / 100) * 100;
         min_y = (min_y / 100) * 100;
         max_x = ((max_x + 99) / 100) * 100;
