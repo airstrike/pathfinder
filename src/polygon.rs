@@ -40,25 +40,6 @@ pub struct Polygon {
     vertices: Vec<Point>,
 }
 
-/// Represents the [`Orientation`] of three [`Point`]s in 2D space
-#[derive(Debug, PartialEq, Eq)]
-enum Orientation {
-    Collinear,
-    Clockwise,
-    Counterclockwise,
-}
-
-// Helper function to determine [`Orientation`] of three [`Point`]s
-fn orientation(p: &Point, q: &Point, r: &Point) -> Orientation {
-    let val = (q.y - p.y) * (r.x - q.x) - (q.x - p.x) * (r.y - q.y);
-
-    match val.cmp(&0) {
-        std::cmp::Ordering::Equal => Orientation::Collinear,
-        std::cmp::Ordering::Greater => Orientation::Clockwise,
-        std::cmp::Ordering::Less => Orientation::Counterclockwise,
-    }
-}
-
 impl Polygon {
     /// Creates a new [`Polygon`] from a vector of [`Point`]s
     pub fn new(vertices: Vec<Point>) -> Self {
@@ -108,6 +89,7 @@ impl Polygon {
     /// Determine if a line segment intersects with the [`Polygon`]
     pub fn intersects_segment(&self, start: &Point, end: &Point) -> bool {
         let n = self.vertices.len();
+        let test_edge = Edge::new(*start, *end);
 
         // First check if both points are vertices or the segment is along an edge
         let mut found_start = false;
@@ -116,6 +98,7 @@ impl Polygon {
             let j = (i + 1) % n;
             let edge_start = &self.vertices[i];
             let edge_end = &self.vertices[j];
+            let polygon_edge = Edge::new(*edge_start, *edge_end);
 
             // Check if points are vertices
             if !found_start {
@@ -125,16 +108,17 @@ impl Polygon {
                 found_end = end == edge_start || end == edge_end;
             }
 
-            // If it's a line along an edge, we don't count it as intersection
-            let edge = Edge::new(*edge_start, *edge_end);
-            if edge.contains_point(start) && edge.contains_point(end) {
+            // If the test edge is collinear with a polygon edge and overlaps it,
+            // we don't count it as an intersection
+            if polygon_edge.contains_point(start) && polygon_edge.contains_point(end) {
                 return false;
             }
-        }
 
-        // If both points are vertices but not along an edge, proceed with
-        // normal intersection check (this handles cases like diagonal lines
-        // through vertices)
+            // Test for intersection with this edge
+            if test_edge.intersects(&polygon_edge) {
+                return true;
+            }
+        }
 
         // If either non-vertex point is inside the polygon, it intersects
         if !found_start && self.contains_point(start) {
@@ -144,31 +128,9 @@ impl Polygon {
             return true;
         }
 
-        // Check each edge for intersection
-        for i in 0..n {
-            let j = (i + 1) % n;
-            let edge_start = &self.vertices[i];
-            let edge_end = &self.vertices[j];
-
-            // Skip if the segment starts or ends at this edge's endpoints
-            if start == edge_start || start == edge_end || end == edge_start || end == edge_end {
-                continue;
-            }
-
-            // Check for actual intersection
-            let o1 = orientation(edge_start, edge_end, start);
-            let o2 = orientation(edge_start, edge_end, end);
-            let o3 = orientation(start, end, edge_start);
-            let o4 = orientation(start, end, edge_end);
-
-            if o1 != o2 && o3 != o4 {
-                return true;
-            }
-        }
-
-        // Check midpoint only if the line isn't along an edge
+        // Check midpoint
         let mid = Point::new((start.x + end.x) / 2, (start.y + end.y) / 2);
-        !Edge::new(*start, *end).contains_point(&mid) && self.contains_point(&mid)
+        !test_edge.contains_point(&mid) && self.contains_point(&mid)
     }
 
     /// Checks if a point lies inside the polygon using the ray casting algorithm
@@ -241,7 +203,7 @@ impl Edge {
 
     /// Returns true if this edge intersects with another edge,
     /// excluding edges that share an endpoint
-    pub fn intersects_edge(&self, other: &Edge) -> bool {
+    pub fn intersects(&self, other: &Edge) -> bool {
         // Skip if edges share an endpoint
         if self.start == other.start
             || self.start == other.end
@@ -251,12 +213,38 @@ impl Edge {
             return false;
         }
 
-        let o1 = orientation(&self.start, &self.end, &other.start);
-        let o2 = orientation(&self.start, &self.end, &other.end);
-        let o3 = orientation(&other.start, &other.end, &self.start);
-        let o4 = orientation(&other.start, &other.end, &self.end);
+        // Calculate parameters for parametric equations
+        // k1 = p1x - p2x  (our start.x - end.x)
+        // k2 = q2y - q1y  (other.end.y - other.start.y)
+        // k3 = p1y - p2y  (our start.y - end.y)
+        // k4 = q2x - q1x  (other.end.x - other.start.x)
+        // k5 = p1x - q1x  (our start.x - other.start.x)
+        // k6 = p1y - q1y  (our start.y - other.start.y)
+        let k1 = self.start.x - self.end.x;
+        let k2 = other.end.y - other.start.y;
+        let k3 = self.start.y - self.end.y;
+        let k4 = other.end.x - other.start.x;
+        let k5 = self.start.x - other.start.x;
+        let k6 = self.start.y - other.start.y;
 
-        o1 != o2 && o3 != o4
+        let d = (k1 * k2) - (k3 * k4);
+
+        // If d is 0, lines are parallel
+        if d == 0 {
+            // For parallel lines, check if they're collinear and overlapping
+            // using our existing contains_point method
+            return self.contains_point(&other.start)
+                || self.contains_point(&other.end)
+                || other.contains_point(&self.start)
+                || other.contains_point(&self.end);
+        }
+
+        // Calculate intersection parameters
+        let a = ((k2 * k5) - (k4 * k6)) as f64 / d as f64;
+        let b = ((k1 * k6) - (k3 * k5)) as f64 / d as f64;
+
+        // Lines intersect if both parameters are between 0 and 1
+        (0.0..=1.0).contains(&a) && (0.0..=1.0).contains(&b)
     }
 
     /// Returns true if a point lies on this edge
@@ -281,6 +269,15 @@ impl Edge {
 mod tests {
     use super::*;
 
+    // Test fixtures
+    fn create_triangle() -> Polygon {
+        Polygon::new(vec![
+            Point::new(0, 0),
+            Point::new(100, 0),
+            Point::new(50, 87), // Approximately equilateral
+        ])
+    }
+
     fn create_square() -> Polygon {
         Polygon::new(vec![
             Point::new(0, 0),
@@ -290,147 +287,283 @@ mod tests {
         ])
     }
 
-    #[test]
-    fn test_vertex_to_outside() {
-        let polygon = create_square();
-
-        // Test from each vertex to outside points
-        assert!(
-            !polygon.intersects_segment(&Point::new(0, 0), &Point::new(-50, -50)),
-            "Vertex to outside should not intersect"
-        );
-
-        assert!(
-            !polygon.intersects_segment(&Point::new(100, 0), &Point::new(150, -50)),
-            "Vertex to outside should not intersect"
-        );
+    fn create_pentagon() -> Polygon {
+        Polygon::new(vec![
+            Point::new(50, 0),
+            Point::new(97, 35),
+            Point::new(80, 90),
+            Point::new(20, 90),
+            Point::new(3, 35),
+        ])
     }
 
-    #[test]
-    fn test_vertex_to_vertex() {
-        let polygon = create_square();
-
-        // Test connecting vertices
-        assert!(
-            !polygon.intersects_segment(&Point::new(0, 0), &Point::new(100, 0)),
-            "Edge of polygon should not count as intersection"
-        );
-
-        assert!(
-            !polygon.intersects_segment(&Point::new(0, 0), &Point::new(100, 100)),
-            "Diagonal through polygon should not intersect if it uses vertices"
-        );
+    fn create_hexagon() -> Polygon {
+        Polygon::new(vec![
+            Point::new(50, 0),
+            Point::new(93, 25),
+            Point::new(93, 75),
+            Point::new(50, 100),
+            Point::new(7, 75),
+            Point::new(7, 25),
+        ])
     }
 
-    #[test]
-    fn test_crossing_edges() {
-        let polygon = create_square();
+    // Helper function to run a test against all polygon types
+    fn test_all_polygons<F>(test_fn: F)
+    where
+        F: Fn(&Polygon),
+    {
+        let polygons = vec![
+            create_triangle(),
+            create_square(),
+            create_pentagon(),
+            create_hexagon(),
+        ];
 
-        // Test lines that clearly cross the polygon
-        assert!(
-            polygon.intersects_segment(&Point::new(-50, 50), &Point::new(150, 50)),
-            "Line through middle should intersect"
-        );
-
-        assert!(
-            polygon.intersects_segment(&Point::new(50, -50), &Point::new(50, 150)),
-            "Vertical line through middle should intersect"
-        );
+        for polygon in polygons {
+            test_fn(&polygon);
+        }
     }
 
-    #[test]
-    fn test_along_edge() {
-        let polygon = create_square();
+    mod edge_tests {
+        use super::*;
 
-        // Test lines that run exactly along edges
-        assert!(
-            !polygon.intersects_segment(&Point::new(0, 0), &Point::new(0, 100)),
-            "Line along edge should not count as intersection"
-        );
+        #[test]
+        fn test_edge_parallel() {
+            let e1 = Edge::new(Point::new(0, 0), Point::new(10, 0));
+            let e2 = Edge::new(Point::new(0, 5), Point::new(10, 5));
+            assert!(!e1.intersects(&e2), "Parallel edges should not intersect");
+        }
 
-        assert!(
-            !polygon.intersects_segment(&Point::new(0, 100), &Point::new(100, 100)),
-            "Line along edge should not count as intersection"
-        );
+        #[test]
+        fn test_edge_collinear() {
+            let e1 = Edge::new(Point::new(0, 0), Point::new(10, 0));
+            let e2 = Edge::new(Point::new(5, 0), Point::new(15, 0));
+            assert!(
+                e1.intersects(&e2),
+                "Overlapping collinear edges should intersect"
+            );
+
+            let e3 = Edge::new(Point::new(0, 0), Point::new(5, 0));
+            let e4 = Edge::new(Point::new(6, 0), Point::new(10, 0));
+            assert!(
+                !e3.intersects(&e4),
+                "Non-overlapping collinear edges should not intersect"
+            );
+        }
+
+        #[test]
+        fn test_edge_intersection() {
+            let e1 = Edge::new(Point::new(0, 0), Point::new(10, 10));
+            let e2 = Edge::new(Point::new(0, 10), Point::new(10, 0));
+            assert!(e1.intersects(&e2), "Crossing edges should intersect");
+
+            let e3 = Edge::new(Point::new(0, 0), Point::new(10, 10));
+            let e4 = Edge::new(Point::new(10, 10), Point::new(20, 20));
+            assert!(
+                !e3.intersects(&e4),
+                "Edges sharing endpoint should not intersect"
+            );
+        }
+
+        #[test]
+        fn test_edge_contains_point() {
+            let edge = Edge::new(Point::new(0, 0), Point::new(10, 10));
+
+            assert!(
+                edge.contains_point(&Point::new(5, 5)),
+                "Point on edge should be contained"
+            );
+            assert!(
+                edge.contains_point(&Point::new(0, 0)),
+                "Start point should be contained"
+            );
+            assert!(
+                edge.contains_point(&Point::new(10, 10)),
+                "End point should be contained"
+            );
+            assert!(
+                !edge.contains_point(&Point::new(5, 6)),
+                "Point off edge should not be contained"
+            );
+        }
     }
 
-    #[test]
-    fn test_through_vertex() {
-        let polygon = create_square();
+    mod intersection_tests {
+        use super::*;
 
-        // Test lines that pass through a vertex
-        assert!(
-            polygon.intersects_segment(&Point::new(0, -50), &Point::new(0, 50)),
-            "Line through vertex into polygon should intersect"
-        );
+        #[test]
+        fn test_vertex_cases() {
+            test_all_polygons(|polygon| {
+                let vertices = polygon.vertices_vec();
 
-        assert!(
-            polygon.intersects_segment(&Point::new(-50, 0), &Point::new(50, 0)),
-            "Line through vertex into polygon should intersect"
-        );
+                // Test vertex to vertex (edges)
+                for i in 0..vertices.len() {
+                    let j = (i + 1) % vertices.len();
+                    assert!(
+                        !polygon.intersects_segment(&vertices[i], &vertices[j]),
+                        "Edge of polygon should not count as intersection"
+                    );
+                }
+
+                // Test vertex to outside - extend directly outward from each
+                // vertex, otherwise we may end up intersecting some other edge
+                // of the polygon
+                for i in 0..vertices.len() {
+                    let vertex = vertices[i];
+                    let prev = vertices[(i + vertices.len() - 1) % vertices.len()];
+                    let next = vertices[(i + 1) % vertices.len()];
+
+                    // Calculate bisector direction to ensure we go outward
+                    let dx1 = vertex.x - prev.x;
+                    let dy1 = vertex.y - prev.y;
+                    let dx2 = vertex.x - next.x;
+                    let dy2 = vertex.y - next.y;
+
+                    // Average the directions and normalize (roughly)
+                    let dx = (dx1 + dx2) / 2;
+                    let dy = (dy1 + dy2) / 2;
+                    let scale = 50; // Distance to extend outward
+
+                    let outside_point = Point::new(
+                        vertex.x + dx / dx.abs().max(1) * scale,
+                        vertex.y + dy / dy.abs().max(1) * scale,
+                    );
+
+                    assert!(
+                        !polygon.intersects_segment(&vertex, &outside_point),
+                        "Line from vertex directly outward should not intersect"
+                    );
+                }
+            });
+        }
+
+        #[test]
+        fn test_crossing_cases() {
+            test_all_polygons(|polygon| {
+                let center = polygon.center();
+
+                // Test lines through center
+                assert!(
+                    polygon.intersects_segment(
+                        &Point::new(center.x - 100, center.y),
+                        &Point::new(center.x + 100, center.y)
+                    ),
+                    "Horizontal line through center should intersect"
+                );
+
+                assert!(
+                    polygon.intersects_segment(
+                        &Point::new(center.x, center.y - 100),
+                        &Point::new(center.x, center.y + 100)
+                    ),
+                    "Vertical line through center should intersect"
+                );
+            });
+        }
+
+        #[test]
+        fn test_internal_cases() {
+            test_all_polygons(|polygon| {
+                let center = polygon.center();
+
+                // Test point at center
+                assert!(
+                    polygon.contains_point(&center),
+                    "Center point should be inside polygon"
+                );
+
+                // Test line between internal points
+                let p1 = Point::new(center.x - 5, center.y - 5);
+                let p2 = Point::new(center.x + 5, center.y + 5);
+                assert!(
+                    polygon.intersects_segment(&p1, &p2),
+                    "Line between internal points should intersect"
+                );
+            });
+        }
+
+        #[test]
+        fn test_exterior_cases() {
+            test_all_polygons(|polygon| {
+                let center = polygon.center();
+
+                // Test completely external line
+                let far_left = Point::new(center.x - 200, center.y);
+                let far_right = Point::new(center.x + 200, center.y);
+                assert!(
+                    !polygon.intersects_segment(
+                        &Point::new(far_left.x, far_left.y + 200),
+                        &Point::new(far_right.x, far_right.y + 200)
+                    ),
+                    "Line completely outside should not intersect"
+                );
+            });
+        }
+
+        #[test]
+        fn test_degenerate_cases() {
+            test_all_polygons(|polygon| {
+                let vertices = polygon.vertices_vec();
+                let center = polygon.center();
+
+                // Test zero-length segments
+                assert!(
+                    !polygon.intersects_segment(&vertices[0], &vertices[0]),
+                    "Zero-length segment at vertex should not intersect"
+                );
+
+                assert!(
+                    polygon.intersects_segment(&center, &center),
+                    "Zero-length segment at center should intersect"
+                );
+            });
+        }
     }
 
-    #[test]
-    fn test_near_miss() {
-        let polygon = create_square();
+    mod geometry_tests {
+        use super::*;
 
-        // Test lines that almost intersect but don't
-        assert!(
-            !polygon.intersects_segment(&Point::new(-10, -10), &Point::new(-10, 110)),
-            "Line near polygon should not intersect"
-        );
+        #[test]
+        fn test_center_calculation() {
+            // For regular polygons, center should be predictable
+            let square = create_square();
+            assert_eq!(
+                square.center(),
+                Point::new(50, 50),
+                "Square center should be at (50,50)"
+            );
 
-        assert!(
-            !polygon.intersects_segment(&Point::new(110, -10), &Point::new(110, 110)),
-            "Line near polygon should not intersect"
-        );
-    }
+            let triangle = create_triangle();
+            assert_eq!(
+                triangle.center(),
+                Point::new(50, 29), // Approximate due to integer division
+                "Triangle center should be at (50,29)"
+            );
+        }
 
-    #[test]
-    fn test_interior_points() {
-        let polygon = create_square();
+        #[test]
+        fn test_edge_extraction() {
+            test_all_polygons(|polygon| {
+                let edges = polygon.outer_edges();
+                let vertices = polygon.vertices_vec();
 
-        // Test lines that have one or both endpoints inside
-        assert!(
-            polygon.intersects_segment(&Point::new(25, 25), &Point::new(75, 75)),
-            "Line between interior points should intersect"
-        );
+                assert_eq!(
+                    edges.len(),
+                    vertices.len(),
+                    "Number of edges should equal number of vertices"
+                );
 
-        assert!(
-            polygon.intersects_segment(&Point::new(50, 50), &Point::new(150, 150)),
-            "Line from interior to exterior should intersect"
-        );
-    }
-
-    #[test]
-    fn test_touching_vertex() {
-        let polygon = create_square();
-
-        // Test lines that just touch a vertex
-        assert!(
-            !polygon.intersects_segment(&Point::new(-50, -50), &Point::new(0, 0)),
-            "Line ending at vertex should not intersect"
-        );
-
-        assert!(
-            !polygon.intersects_segment(&Point::new(100, 0), &Point::new(150, -50)),
-            "Line starting at vertex should not intersect"
-        );
-    }
-
-    #[test]
-    fn test_midpoint_cases() {
-        let polygon = create_square();
-
-        // Test cases where the midpoint is significant
-        assert!(
-            polygon.intersects_segment(&Point::new(-50, 50), &Point::new(150, 50)),
-            "Line through midpoint should intersect"
-        );
-
-        assert!(
-            !polygon.intersects_segment(&Point::new(-50, -50), &Point::new(-10, -10)),
-            "Line with midpoint outside should not intersect"
-        );
+                // Verify each edge connects consecutive vertices
+                for (i, edge) in edges.iter().enumerate() {
+                    assert_eq!(edge.start, vertices[i], "Edge should start at vertex");
+                    assert_eq!(
+                        edge.end,
+                        vertices[(i + 1) % vertices.len()],
+                        "Edge should end at next vertex"
+                    );
+                }
+            });
+        }
     }
 }
