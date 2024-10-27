@@ -6,6 +6,7 @@ use iced::widget::{
 use iced::Alignment::Center;
 use iced::{event, keyboard, mouse, time, window};
 use iced::{Element, Length, Rectangle, Renderer, Subscription, Task, Theme};
+use search::SearchVariant;
 use std::time::Duration;
 
 mod board;
@@ -19,7 +20,7 @@ pub use board::Board;
 pub use pathfinder::{Heuristic, Pathfinder, SearchState};
 pub use point::Point;
 pub use polygon::{Edge, Polygon};
-pub use search::VisibilityGraphPathfinder;
+pub use search::Search;
 pub use vector::Vector;
 
 fn main() -> iced::Result {
@@ -40,7 +41,7 @@ struct App {
     board: Board,
     is_playing: bool,
     heuristic: Heuristic,
-    search: VisibilityGraphPathfinder,
+    search: Search,
     start: Point,
     goal: Point,
     show_solution: bool,
@@ -52,7 +53,7 @@ impl Default for App {
         let start = Point::new(115, 655);
         let heuristic = Heuristic::default();
         let goal = Point::new(380, 560);
-        let search = VisibilityGraphPathfinder::new(board.clone(), start, goal, heuristic);
+        let search = Search::new(board.clone(), start, goal, heuristic);
 
         Self {
             board_cache: Cache::default(),
@@ -76,6 +77,7 @@ enum Message {
     TogglePlay,
     ToggleSolution,
     PickHeuristic(Heuristic),
+    PickVariant(SearchVariant),
     SetStart(Point),
     SetGoal(Point),
     Tick,
@@ -108,9 +110,11 @@ impl App {
     fn view(&self) -> Element<Message> {
         center(
             column![
-                container(text("Press Shift + F11 to toggle fullscreen"))
-                    .padding(5)
-                    .style(container::rounded_box),
+                pick_list(
+                    SearchVariant::ALL,
+                    Some(self.search.variant()),
+                    Message::PickVariant
+                ),
                 responsive(move |size| {
                     center(
                         Canvas::new(self)
@@ -128,6 +132,16 @@ impl App {
         )
         .padding(5)
         .into()
+    }
+
+    fn renew_search(&mut self, variant: SearchVariant) {
+        self.search = Search::new_for_variant(
+            self.board.clone(),
+            self.start,
+            self.goal,
+            self.heuristic,
+            variant,
+        );
     }
 
     fn update(&mut self, message: Message) -> Task<Message> {
@@ -148,24 +162,20 @@ impl App {
             Message::PickHeuristic(heuristic) => {
                 self.is_playing = false;
                 self.heuristic = heuristic;
-                self.search = VisibilityGraphPathfinder::new(
-                    self.board.clone(),
-                    self.start,
-                    self.goal,
-                    self.heuristic,
-                );
+                self.renew_search(self.search.variant());
+                self.search_cache.clear();
+                Task::none()
+            }
+            Message::PickVariant(variant) => {
+                self.is_playing = false;
+                self.renew_search(variant);
                 self.search_cache.clear();
                 Task::none()
             }
             Message::SetStart(start) => {
                 let is_finished = self.search.is_finished();
                 self.start = start;
-                self.search = VisibilityGraphPathfinder::new(
-                    self.board.clone(),
-                    self.start,
-                    self.goal,
-                    self.heuristic,
-                );
+                self.renew_search(self.search.variant());
                 if is_finished {
                     self.search.jump_to(self.search.total_steps());
                 }
@@ -175,12 +185,7 @@ impl App {
             Message::SetGoal(goal) => {
                 let is_finished = self.search.is_finished();
                 self.goal = goal;
-                self.search = VisibilityGraphPathfinder::new(
-                    self.board.clone(),
-                    self.start,
-                    self.goal,
-                    self.heuristic,
-                );
+                self.renew_search(self.search.variant());
                 if is_finished {
                     self.search.jump_to(self.search.total_steps());
                 }

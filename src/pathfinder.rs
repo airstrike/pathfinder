@@ -52,7 +52,7 @@ impl Heuristic {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SearchState {
     pub open: HashSet<Point>,
     pub closed: HashSet<Point>,
