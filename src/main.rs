@@ -9,15 +9,17 @@ use iced::{Element, Length, Rectangle, Renderer, Subscription, Task, Theme};
 use std::time::Duration;
 
 mod board;
+mod pathfinder;
 mod point;
 mod polygon;
 mod search;
 mod vector;
 
 pub use board::Board;
+pub use pathfinder::{Heuristic, Pathfinder, SearchState};
 pub use point::Point;
 pub use polygon::{Edge, Polygon};
-pub use search::{Heuristic, Search};
+pub use search::VisibilityGraphPathfinder;
 pub use vector::Vector;
 
 fn main() -> iced::Result {
@@ -38,7 +40,7 @@ struct App {
     board: Board,
     is_playing: bool,
     heuristic: Heuristic,
-    search: Search,
+    search: VisibilityGraphPathfinder,
     start: Point,
     goal: Point,
     show_solution: bool,
@@ -50,7 +52,7 @@ impl Default for App {
         let start = Point::new(115, 655);
         let heuristic = Heuristic::default();
         let goal = Point::new(380, 560);
-        let search = Search::new(board.clone(), start, goal, heuristic);
+        let search = VisibilityGraphPathfinder::new(board.clone(), start, goal, heuristic);
 
         Self {
             board_cache: Cache::default(),
@@ -146,16 +148,24 @@ impl App {
             Message::PickHeuristic(heuristic) => {
                 self.is_playing = false;
                 self.heuristic = heuristic;
-                self.search =
-                    Search::new(self.board.clone(), self.start, self.goal, self.heuristic);
+                self.search = VisibilityGraphPathfinder::new(
+                    self.board.clone(),
+                    self.start,
+                    self.goal,
+                    self.heuristic,
+                );
                 self.search_cache.clear();
                 Task::none()
             }
             Message::SetStart(start) => {
                 let is_finished = self.search.is_finished();
                 self.start = start;
-                self.search =
-                    Search::new(self.board.clone(), self.start, self.goal, self.heuristic);
+                self.search = VisibilityGraphPathfinder::new(
+                    self.board.clone(),
+                    self.start,
+                    self.goal,
+                    self.heuristic,
+                );
                 if is_finished {
                     self.search.jump_to(self.search.total_steps());
                 }
@@ -165,8 +175,12 @@ impl App {
             Message::SetGoal(goal) => {
                 let is_finished = self.search.is_finished();
                 self.goal = goal;
-                self.search =
-                    Search::new(self.board.clone(), self.start, self.goal, self.heuristic);
+                self.search = VisibilityGraphPathfinder::new(
+                    self.board.clone(),
+                    self.start,
+                    self.goal,
+                    self.heuristic,
+                );
                 if is_finished {
                     self.search.jump_to(self.search.total_steps());
                 }

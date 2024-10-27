@@ -1,80 +1,20 @@
-use crate::{Board, Point};
-use iced::widget::canvas::{Fill, Frame, LineDash, Path, Stroke, Text};
-use iced::Color;
-use num_traits::{AsPrimitive, Signed};
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap, HashSet};
 
-#[derive(Default, Debug, Clone, Copy, PartialEq)]
-pub enum Heuristic {
-    #[default]
-    Euclidean,
-    Manhattan,
-}
-
-impl std::fmt::Display for Heuristic {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Heuristic::Euclidean => write!(f, "Euclidean"),
-            Heuristic::Manhattan => write!(f, "Manhattan"),
-        }
-    }
-}
-
-impl Heuristic {
-    pub const ALL: &'static [Heuristic] = &[Heuristic::Euclidean, Heuristic::Manhattan];
-
-    pub fn distance<T>(self, p1: &Point<T>, p2: &Point<T>) -> T
-    where
-        T: Copy
-            + Default
-            + Signed
-            + std::ops::Sub<Output = T>
-            + std::ops::Add<Output = T>
-            + std::ops::Mul<Output = T>
-            + AsPrimitive<f64>,
-        f64: AsPrimitive<T>,
-    {
-        match self {
-            Heuristic::Manhattan => {
-                let dx = num_traits::abs(p2.x - p1.x);
-                let dy = num_traits::abs(p2.y - p1.y);
-                dx + dy
-            }
-            Heuristic::Euclidean => {
-                let dx = p2.x - p1.x;
-                let dy = p2.y - p1.y;
-                let squared = dx * dx + dy * dy;
-                let float_result = squared.as_();
-                (float_result.sqrt()).as_()
-            }
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-struct State {
-    open: HashSet<Point>,
-    closed: HashSet<Point>,
-    current_paths: HashMap<Point, Vec<Point>>,
-    best_path: Option<Vec<Point>>,
-    considered_edges: HashSet<(Point, Point)>,
-    next_vertex: Option<Point>,
-    g_scores: HashMap<Point, i32>,
-    came_from: HashMap<Point, Point>,
-}
+use crate::{Board, Heuristic, Pathfinder, Point, SearchState};
 
 #[derive(Clone)]
-pub struct Search {
+/// A* pathfinding implementation using pre-computed visibility graph
+pub struct VisibilityGraphPathfinder {
     board: Board,
     start: Point,
     goal: Point,
     heuristic: Heuristic,
-    optimal_path: Option<(Vec<Point>, i32)>,
-    state: State,
-    current_step: usize,
-    history: Vec<State>,
     visibility_graph: HashMap<Point, HashSet<Point>>,
+    state: SearchState,
+    history: Vec<SearchState>,
+    current_step: usize,
+    optimal_path: Option<(Vec<Point>, i32)>,
 }
 
 #[derive(Clone, Eq, PartialEq)]
@@ -96,8 +36,8 @@ impl PartialOrd for SearchNode {
     }
 }
 
-impl Search {
-    pub fn new(board: Board, start: Point, goal: Point, heuristic: Heuristic) -> Self {
+impl Pathfinder for VisibilityGraphPathfinder {
+    fn new(board: Board, start: Point, goal: Point, heuristic: Heuristic) -> Self {
         let mut search = Self {
             board,
             start,
@@ -105,7 +45,7 @@ impl Search {
             heuristic,
             optimal_path: None,
             visibility_graph: HashMap::new(),
-            state: State {
+            state: SearchState {
                 open: HashSet::from([start]),
                 closed: HashSet::new(),
                 current_paths: HashMap::from([(start, vec![start])]),
@@ -119,28 +59,44 @@ impl Search {
             history: Vec::new(),
         };
 
-        // Build visibility graph for this board, compute solution and history
+        // Build visibility graph and compute solution
         search.visibility_graph = search.build_visibility_graph();
         search.compute_optimal_path();
         search.history.push(search.state.clone());
-        search.reset(); // Return to step 0
+        search.reset();
 
         search
     }
 
-    pub fn total_steps(&self) -> usize {
+    fn get_board(&self) -> &Board {
+        &self.board
+    }
+    fn get_state(&self) -> &SearchState {
+        &self.state
+    }
+    fn get_start(&self) -> Point {
+        self.start
+    }
+    fn get_goal(&self) -> Point {
+        self.goal
+    }
+    fn get_heuristic(&self) -> Heuristic {
+        self.heuristic
+    }
+
+    fn get_optimal_path(&self) -> Option<&(Vec<Point>, i32)> {
+        self.optimal_path.as_ref()
+    }
+
+    fn total_steps(&self) -> usize {
         self.history.len() - 1
     }
 
-    pub fn is_finished(&self) -> bool {
-        self.current_step >= self.total_steps()
-    }
-
-    pub fn current_step(&self) -> usize {
+    fn current_step(&self) -> usize {
         self.current_step
     }
 
-    pub fn step_forward(&mut self) -> bool {
+    fn step_forward(&mut self) -> bool {
         if self.is_finished() {
             return false;
         }
@@ -149,7 +105,7 @@ impl Search {
         true
     }
 
-    pub fn step_back(&mut self) -> bool {
+    fn step_back(&mut self) -> bool {
         if self.current_step == 0 {
             return false;
         }
@@ -158,7 +114,7 @@ impl Search {
         true
     }
 
-    pub fn jump_to(&mut self, step: usize) -> bool {
+    fn jump_to(&mut self, step: usize) -> bool {
         if step > self.total_steps() {
             return false;
         }
@@ -167,33 +123,19 @@ impl Search {
         true
     }
 
-    pub fn reset(&mut self) {
+    fn reset(&mut self) {
         self.current_step = 0;
         self.state = self.history[0].clone();
     }
 
-    pub fn change_heuristic(&mut self, heuristic: Heuristic) {
+    fn change_heuristic(&mut self, heuristic: Heuristic) {
         self.heuristic = heuristic;
         self.reset();
         self.compute_optimal_path();
     }
+}
 
-    pub fn get_optimal_path(&self) -> Option<&(Vec<Point>, i32)> {
-        self.optimal_path.as_ref()
-    }
-
-    pub fn best_path_score(&self) -> Option<i32> {
-        self.state.best_path.as_ref().map(|path| {
-            path.windows(2)
-                .map(|window| Self::distance(&window[0], &window[1]))
-                .sum()
-        })
-    }
-
-    pub fn optimal_path_score(&self) -> Option<i32> {
-        self.optimal_path.as_ref().map(|(_, score)| *score)
-    }
-
+impl VisibilityGraphPathfinder {
     fn compute_optimal_path(&mut self) {
         self.history.clear();
         let mut open_set = BinaryHeap::new();
@@ -206,17 +148,15 @@ impl Search {
         self.state.g_scores.insert(self.start, 0);
 
         while let Some(current) = open_set.pop() {
-            // Found the goal
             if current.vertex == self.goal {
                 let path = self.reconstruct_path(&current.vertex);
                 self.optimal_path = Some((path.clone(), current.g_score));
                 self.state.best_path = Some(path);
-                return; // Don't push any state when we find the goal
+                return;
             }
 
-            // Save state for visualization before processing current node
+            // Save state for visualization
             self.history.push(self.state.clone());
-
             self.state.closed.insert(current.vertex);
 
             if let Some(neighbors) = self.visibility_graph.get(&current.vertex) {
@@ -233,7 +173,6 @@ impl Search {
                         let mut new_path = self.reconstruct_path(&current.vertex);
                         new_path.push(neighbor);
                         self.state.current_paths.insert(neighbor, new_path);
-
                         self.state
                             .considered_edges
                             .insert((current.vertex, neighbor));
@@ -251,188 +190,8 @@ impl Search {
         }
     }
 
-    fn reconstruct_path(&self, vertex: &Point) -> Vec<Point> {
-        let mut path = vec![*vertex];
-        let mut current = *vertex;
-
-        while let Some(&prev) = self.state.came_from.get(&current) {
-            path.push(prev);
-            current = prev;
-        }
-
-        path.reverse();
-        path
-    }
-
-    pub fn draw(&self, frame: &mut Frame, show_solution: bool) {
-        // First draw the board
-        self.board.draw(frame);
-
-        // Draw historical considered edges as thin gray lines
-        let historical_stroke = Stroke::default()
-            .with_color(Color::from_rgba8(128, 128, 128, 0.3))
-            .with_width(1.0);
-
-        for (from, to) in &self.state.considered_edges {
-            let path = Path::line(
-                (from.x as f32, -from.y as f32).into(), // Flip y-coordinate
-                (to.x as f32, -to.y as f32).into(),     // Flip y-coordinate
-            );
-            frame.stroke(&path, historical_stroke);
-        }
-
-        // Draw current active paths
-        let current_stroke = Stroke::default()
-            .with_color(Color::from_rgba8(0, 100, 255, 0.5))
-            .with_width(2.0);
-
-        // Find the path that gets closest to the goal
-        let mut best_current_path = None;
-        let mut best_distance_to_goal = i32::MAX;
-
-        for (target, path) in &self.state.current_paths {
-            if path.len() > 1 {
-                let distance_to_goal = Self::distance(target, &self.goal);
-
-                if distance_to_goal < best_distance_to_goal {
-                    best_distance_to_goal = distance_to_goal;
-                    best_current_path = Some(path.clone());
-                }
-
-                for window in path.windows(2) {
-                    let from = window[0];
-                    let to = window[1];
-                    let path = Path::line(
-                        (from.x as f32, -from.y as f32).into(), // Flip y-coordinate
-                        (to.x as f32, -to.y as f32).into(),     // Flip y-coordinate
-                    );
-                    frame.stroke(&path, current_stroke);
-                }
-            }
-        }
-
-        // Draw the best current path in green
-        if let Some(path) = best_current_path {
-            let best_stroke = Stroke::default()
-                .with_color(Color::from_rgb8(50, 205, 50))
-                .with_width(3.0);
-
-            for window in path.windows(2) {
-                let from = window[0];
-                let to = window[1];
-                let path = Path::line(
-                    (from.x as f32, -from.y as f32).into(), // Flip y-coordinate
-                    (to.x as f32, -to.y as f32).into(),     // Flip y-coordinate
-                );
-                frame.stroke(&path, best_stroke);
-            }
-
-            if let Some(last) = path.last() {
-                let current_path_score: i32 = path
-                    .windows(2)
-                    .map(|window| Self::distance(&window[0], &window[1]))
-                    .sum();
-
-                let content = match best_distance_to_goal {
-                    0 => format!("Goal: {current_path_score}"),
-                    _ => format!(
-                        "Current best: {current_path_score}\nTo goal: {best_distance_to_goal}"
-                    ),
-                };
-                frame.fill_text(Text {
-                    content,
-                    position: (last.x as f32 + 2.5, -last.y as f32 + 2.5).into(),
-                    color: Color::BLACK,
-                    size: 4.0.into(),
-                    ..Text::default()
-                });
-            }
-        }
-
-        // Overlay the optimal solution if requested
-        if show_solution {
-            if let Some((path, score)) = &self.optimal_path {
-                let solution_stroke = Stroke {
-                    line_dash: LineDash {
-                        segments: &[5.0, 5.0],
-                        offset: 2,
-                    },
-                    ..Default::default()
-                }
-                .with_color(Color::from_rgb8(50, 205, 50))
-                .with_width(3.0);
-
-                for window in path.windows(2) {
-                    let from = window[0];
-                    let to = window[1];
-                    let path = Path::line(
-                        (from.x as f32, -from.y as f32).into(), // Flip y-coordinate
-                        (to.x as f32, -to.y as f32).into(),     // Flip y-coordinate
-                    );
-                    frame.stroke(&path, solution_stroke);
-                }
-
-                if let Some(last) = path.last() {
-                    frame.fill_text(Text {
-                        content: format!("Optimal: {}", score),
-                        position: (last.x as f32 + 5.0, -last.y as f32 - 5.0).into(),
-                        color: Color::BLACK,
-                        size: 4.0.into(),
-                        ..Text::default()
-                    });
-                }
-            }
-        }
-
-        // Draw vertices
-        for vertex in &self.state.open {
-            let circle = Path::circle((vertex.x as f32, -vertex.y as f32).into(), 1.0);
-            frame.fill(&circle, Fill::from(Color::from_rgb8(0, 100, 255)));
-        }
-
-        for vertex in &self.state.closed {
-            let circle = Path::circle((vertex.x as f32, -vertex.y as f32).into(), 1.0);
-            frame.fill(&circle, Fill::from(Color::from_rgb8(255, 100, 100)));
-        }
-
-        if let Some(next) = self.state.next_vertex {
-            let circle = Path::circle((next.x as f32, -next.y as f32).into(), 1.5);
-            frame.fill(&circle, Fill::from(Color::from_rgb8(50, 205, 50)));
-        }
-
-        // Draw start and goal
-        let start_circle = Path::circle((self.start.x as f32, -self.start.y as f32).into(), 2.0);
-        frame.fill(&start_circle, Fill::from(Color::from_rgb8(0, 0, 255)));
-        frame.fill_text(Text {
-            content: format!("({}, {})", self.start.x, self.start.y),
-            position: (self.start.x as f32, -self.start.y as f32 - 6.5).into(),
-            color: Color::BLACK,
-            size: 4.0.into(),
-            horizontal_alignment: iced::alignment::Horizontal::Center,
-            ..Text::default()
-        });
-
-        let goal_circle = Path::circle((self.goal.x as f32, -self.goal.y as f32).into(), 2.0);
-        frame.fill(&goal_circle, Fill::from(Color::from_rgb8(255, 0, 0)));
-        frame.fill_text(Text {
-            content: format!("({}, {})", self.goal.x, self.goal.y),
-            position: (self.goal.x as f32 - 2.5, -self.goal.y as f32 - 6.5).into(),
-            color: Color::BLACK,
-            size: 4.0.into(),
-            horizontal_alignment: iced::alignment::Horizontal::Center,
-            ..Text::default()
-        });
-    }
-
-    /// Calculate actual distance between two points
-    fn distance(p1: &Point<i32>, p2: &Point<i32>) -> i32 {
-        let dx = p2.x - p1.x;
-        let dy = p2.y - p1.y;
-        ((dx * dx + dy * dy) as f64).sqrt() as i32
-    }
-
-    /// Builds a visibility graph based on inter-visible vertices
-    pub fn build_visibility_graph(&self) -> HashMap<Point, HashSet<Point>> {
+    /// Builds visibility graph based on inter-visible vertices
+    fn build_visibility_graph(&self) -> HashMap<Point, HashSet<Point>> {
         let mut graph: HashMap<Point, HashSet<Point>> = HashMap::new();
         let mut vertices = self.board.vertices();
 
@@ -447,7 +206,6 @@ impl Search {
                     continue;
                 }
 
-                // Check if vertices are visible to each other
                 if self.are_vertices_visible(v1, v2) {
                     graph.entry(v1).or_default().insert(v2);
                     graph.entry(v2).or_default().insert(v1);
@@ -460,19 +218,17 @@ impl Search {
 
     /// Determines if two vertices can see each other
     fn are_vertices_visible(&self, v1: Point, v2: Point) -> bool {
-        // If points are the same, they're not visible to each other
         if v1 == v2 {
             return false;
         }
 
-        // For each polygon
         for polygon in self.board.polygons() {
-            // Skip intersection check if both points are vertices of this polygon
+            // Special case: if both points are vertices of same polygon
             let v1_in_polygon = polygon.vertices_vec().contains(&v1);
             let v2_in_polygon = polygon.vertices_vec().contains(&v2);
 
             if v1_in_polygon && v2_in_polygon {
-                // If they're adjacent vertices in the polygon, they're visible
+                // Visible if they're adjacent vertices
                 let vertices = polygon.vertices_vec();
                 let n = vertices.len();
                 for i in 0..n {
@@ -483,11 +239,11 @@ impl Search {
                         return true;
                     }
                 }
-                // Non-adjacent vertices of the same polygon can't see each other
+                // Non-adjacent vertices of same polygon can't see each other
                 return false;
             }
 
-            // Check if the line segment intersects this polygon
+            // Check if line segment intersects this polygon
             if polygon.intersects_segment(&v1, &v2) {
                 return false;
             }
@@ -518,7 +274,7 @@ mod tests {
         let board = create_test_board();
         let start = Point::new(0, 0);
         let goal = Point::new(100, 100);
-        let search = Search::new(board, start, goal, Heuristic::Euclidean);
+        let search = VisibilityGraphPathfinder::new(board, start, goal, Heuristic::Euclidean);
 
         assert!(
             search.get_optimal_path().is_some(),
@@ -531,7 +287,7 @@ mod tests {
         let board = create_test_board();
         let start = Point::new(0, 0);
         let goal = Point::new(100, 100);
-        let search = Search::new(board, start, goal, Heuristic::Euclidean);
+        let search = VisibilityGraphPathfinder::new(board, start, goal, Heuristic::Euclidean);
 
         let (path, _) = search.get_optimal_path().unwrap();
         assert_eq!(
@@ -547,7 +303,7 @@ mod tests {
         let board = create_test_board();
         let start = Point::new(0, 0);
         let goal = Point::new(100, 100);
-        let mut search = Search::new(board, start, goal, Heuristic::Euclidean);
+        let mut search = VisibilityGraphPathfinder::new(board, start, goal, Heuristic::Euclidean);
 
         let total_steps = search.total_steps();
         let mut previous_state = None;
@@ -577,7 +333,8 @@ mod tests {
         let board = create_test_board();
         let start = Point::new(0, 0);
         let goal = Point::new(100, 100);
-        let search = Search::new(board.clone(), start, goal, Heuristic::Euclidean);
+        let search =
+            VisibilityGraphPathfinder::new(board.clone(), start, goal, Heuristic::Euclidean);
 
         let (path, _) = search.get_optimal_path().unwrap();
 
@@ -604,8 +361,9 @@ mod tests {
         let goal = Point::new(100, 100);
 
         // Run search with both heuristics
-        let euclidean = Search::new(board.clone(), start, goal, Heuristic::Euclidean);
-        let manhattan = Search::new(board, start, goal, Heuristic::Manhattan);
+        let euclidean =
+            VisibilityGraphPathfinder::new(board.clone(), start, goal, Heuristic::Euclidean);
+        let manhattan = VisibilityGraphPathfinder::new(board, start, goal, Heuristic::Manhattan);
 
         // Both should find a path
         assert!(euclidean.get_optimal_path().is_some());
@@ -628,7 +386,8 @@ mod tests {
         let board = create_test_board();
         let start = Point::new(0, 0);
         let goal = Point::new(100, 100);
-        let search = Search::new(board.clone(), start, goal, Heuristic::Euclidean);
+        let search =
+            VisibilityGraphPathfinder::new(board.clone(), start, goal, Heuristic::Euclidean);
 
         let graph = search.build_visibility_graph();
 
@@ -662,7 +421,7 @@ mod tests {
         let board = create_test_board();
         let start = Point::new(0, 0);
         let goal = Point::new(100, 100);
-        let search = Search::new(board, start, goal, Heuristic::Euclidean);
+        let search = VisibilityGraphPathfinder::new(board, start, goal, Heuristic::Euclidean);
 
         // Get the final state
         let mut final_search = search.clone();
