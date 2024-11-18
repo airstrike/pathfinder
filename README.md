@@ -26,73 +26,124 @@ cargo run --release
 ## Overview
 
 Pathfinder is built in Rust using the [`iced`](https://iced.rs) GUI framework.
-The application visualizes the A* pathfinding algorithm as it discovers optimal
-paths between start and goal points while avoiding polygonal obstacles.
+The application provides an extensible framework for implementing and
+visualizing different pathfinding strategies between start and goal points
+while avoiding polygonal obstacles.
+
+### Features
+
+- Interactive visualization with play/pause and step-by-step controls
+- Click to place start/goal points
+- Multiple pathfinding strategies (A* and Visibility Graph)
+- Choice of distance heuristics (Euclidean, Manhattan)
+- Real-time visualization of search progress
+- Polygon-based obstacles with robust intersection testing
+- Pastel color scheme for clear obstacle identification
 
 ### Code Structure
 
 The codebase is organized into several key modules:
 
-- `main.rs`: Entry point containing the application state and UI event handling.
-Manages the visualization loop and user interactions through the Iced framework.
+- `main.rs`: Entry point and GUI implementation using iced. Handles user
+  interaction, visualization loop, and keyboard/mouse controls.
 
 - `board.rs`: Defines the game board and its polygonal obstacles. Handles
-drawing the board, managing coordinate systems, and providing interfaces to
-query board state (vertices, edges, etc.).
+  drawing the board and provides interfaces to query board state.
 
-- `polygon.rs`: Implements polygon representation and geometric operations.
-Handles collision detection, point-in-polygon testing, edge intersection checks,
-and provides colored visualization with pastel shades. Includes comprehensive
-test cases for edge cases in geometric calculations.
+- `polygon.rs`: Sophisticated polygon representation with robust geometric
+  operations:
+  - Intersection detection using orientation predicates
+  - Point-in-polygon testing via ray casting
+  - Special case handling for collinear points and edge cases
+  - Colored visualization with pastel shades
 
-- `search.rs`: Implements the A* pathfinding algorithm. Maintains search state,
-processes steps, and builds visibility graphs. The search uses a binary heap for
-efficient frontier exploration and caches intermediate states for visualization.
+- `pathfinder.rs`: Defines the core `Pathfinder` trait that all pathfinding
+  implementations must satisfy. Provides default implementations for:
+  - Path reconstruction
+  - Distance calculations
+  - State management
+  - Visualization
+  - Step controls (forward/back/reset)
 
-### Algorithms
+- `search/`: Contains concrete pathfinding implementations:
+  - `simple.rs`: Classic A* implementation that explores points dynamically
+  - `visibility.rs`: Visibility graph-based implementation that pre-computes
+    valid paths between visible vertices
 
-#### Pathfinding Implementation
+### Pathfinding Implementations
 
-The A* implementation uses a visibility graph approach for pathfinding:
+#### Common Interface (`Pathfinder` trait)
 
-1. First builds a visibility graph connecting all vertices that have line-of-sight to each other
-2. Performs A* search on this graph using either Euclidean or Manhattan distance heuristics
-3. Maintains search state history for visualization of the discovery process
+The core `Pathfinder` trait defines a common interface that all pathfinding strategies must implement. This includes:
+- Board and state access (current board configuration, search state)
+- Path management (reconstruction, scoring, validation)
+- Algorithm control (initialization, stepping, reset)
+- Visualization support (drawing current state, history)
+- Heuristic configuration
+- Solution access and validation
 
-#### Collision Detection
+The trait provides default implementations for visualization, path reconstruction, scoring, and state management, allowing implementations to focus on their core pathfinding logic.
 
-Edge intersection checking is handled through several geometric algorithms:
+#### A* Implementation (`AStarPathfinder`)
 
-- Point-in-polygon testing using ray casting
-- Line segment intersection testing using orientation predicates
-- Special case handling for vertices and edges to avoid floating point precision issues
+- Follows the textbook approach with OPEN/CLOSED lists
+- Dynamically explores points without preprocessing
+- Reopens CLOSED nodes when better paths are found
+- Maintains comprehensive path history for visualization
 
-#### Obstacle Avoidance
+#### Visibility Graph Implementation (`VisibilityGraphPathfinder`)
 
-The visibility graph ensures paths never cross through obstacles by:
+- Pre-computes a visibility graph connecting mutually visible vertices
+- Uses a geometric approach to determine vertex visibility
+- Performs A* search on the reduced graph
+- More efficient for static environments
+- Guarantees optimal paths through vertex-vertex movements
 
-1. Pre-computing valid paths between visible vertices
-2. Only allowing movements along edges in the visibility graph
-3. Testing all potential path segments against polygon edges during graph construction
+### Visualization
+
+The visualization system leverages iced's `Canvas` widget to provide:
+
+- Real-time rendering of the search process
+- Color-coded elements:
+  - Open nodes (blue)
+  - Closed nodes (red)
+  - Current best path (green)
+  - Historical paths (gray)
+  - Polygonal obstacles (pastel colors)
+- Interactive controls:
+  - Play/pause/step buttons
+  - Navigation slider
+  - Algorithm selection
+  - Heuristic selection
+  - Solution overlay toggle
 
 ## TODOs
 
-If I had infinite free time, I'd implement some or all of the below. The current
-code base makes some of these quite straightforward to implement, so if anyone's
-up for it and submits a PR with tests, I'd be happy to merge it.
+If I had infinite free time, I'd implement some or all of the below:
 
-- [ ] Better bounds and polygon check for changing start/goal points
-- [ ] Add support for custom boards
-- [ ] Add support for custom obstacle placement
-- [ ] Implement additional visualization modes (e.g., heatmaps, path cost, etc.)
-- [ ] Add support for additional pathfinding algorithms (Dijkstra, BFS, etc.)
+- [ ] Add more pathfinding implementations:
+  - [ ] Dijkstra's algorithm
+  - [ ] RRT (Rapidly-exploring Random Trees)
+  - [ ] Potential fields
+- [ ] Support custom boards and obstacle placement
+- [ ] Add more visualization modes (heatmaps, path costs)
+- [ ] Implement dynamic obstacle avoidance
+- [ ] Add comparative performance metrics
+- [ ] Support for weighted edges and terrain costs
+- [ ] Path smoothing and optimization
 
-## Interface
+## Contributing
 
-`iced` provides a very helpful `Canvas` widget which we use for rendering, as
-well as interactive controls such as sliders and buttons that we leverage for
-detailed algorithm visualization via play/pause, step-by-step advancement, and
-heuristic selection.
+New pathfinding implementations can be added by:
+1. Creating a new implementation of the `Pathfinder` trait
+2. Adding the implementation to the `Search` enum
+3. Including comprehensive test cases
+4. Ensuring proper visualization support
+
+The project emphasizes intuitive, interactive visualizations that help users
+understand how different pathfinding algorithms work. The modular architecture,
+built around the `Pathfinder` trait, makes it straightforward to add new
+algorithms while maintaining a consistent visualization and interaction model.
 
 ## Acknowledgements
 
