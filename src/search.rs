@@ -50,6 +50,13 @@ impl Search {
         }
     }
 
+    pub fn history(&self) -> &[SearchState] {
+        match self {
+            Search::Visibility(p) => p.history(),
+            Search::AStar(p) => p.history(),
+        }
+    }
+
     pub fn new_for_variant(
         board: Board,
         start: Point,

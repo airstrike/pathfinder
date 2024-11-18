@@ -3,7 +3,7 @@ use std::collections::{BinaryHeap, HashMap, HashSet};
 
 use crate::{Board, Heuristic, Pathfinder, Point, SearchState};
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 /// A* pathfinding implementation using pre-computed visibility graph
 pub struct VisibilityGraphPathfinder {
     board: Board,
@@ -33,6 +33,12 @@ impl Ord for SearchNode {
 impl PartialOrd for SearchNode {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
+    }
+}
+
+impl VisibilityGraphPathfinder {
+    pub fn history(&self) -> &[SearchState] {
+        &self.history
     }
 }
 

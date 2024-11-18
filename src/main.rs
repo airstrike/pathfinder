@@ -196,6 +196,16 @@ impl App {
                 if self.is_playing {
                     if !self.search.step_forward() {
                         self.is_playing = false;
+                        let all_path_points = self.search.get_optimal_path().unwrap();
+                        // eprintln!(
+                        //     "Search finished! {}",
+                        //     all_path_points
+                        //         .0
+                        //         .iter()
+                        //         .map(|p| format!("({},{})", p.x, p.y))
+                        //         .collect::<Vec<_>>()
+                        //         .join(" -> ")
+                        // );
                     }
                     self.search_cache.clear();
                 }

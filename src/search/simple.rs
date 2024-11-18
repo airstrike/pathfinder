@@ -41,6 +41,12 @@ impl PartialOrd for SearchNode {
     }
 }
 
+impl AStarPathfinder {
+    pub fn history(&self) -> &[SearchState] {
+        &self.history
+    }
+}
+
 impl Pathfinder for AStarPathfinder {
     fn new(board: Board, start: Point, goal: Point, heuristic: Heuristic) -> Self {
         let mut search = Self {
